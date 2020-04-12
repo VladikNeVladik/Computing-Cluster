@@ -122,6 +122,7 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 void discover_server(struct ClusterClientHandle* handle)
 {
 	static const int DATAGRAM_SIZE = 16;
+	static const int PORT = 20000;
 
 	if (handle == NULL)
 	{
@@ -147,8 +148,8 @@ void discover_server(struct ClusterClientHandle* handle)
 	struct sockaddr_in broadcast_addr =
 	{
 		.sin_family      = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_ANY),
-		.sin_port        = htons(0)
+		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+		.sin_port        = htons(PORT)
 	};
 
 	if (bind(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
@@ -174,7 +175,7 @@ void discover_server(struct ClusterClientHandle* handle)
 			exit(EXIT_FAILURE);
 		}
 	}
-	while (bytes_read != DATAGRAM_SIZE || strcmp(buffer, "@ Still Alive @") != 0);
+	while (bytes_read != DATAGRAM_SIZE);
 
 	handle->server_addr = peer_addr;
 

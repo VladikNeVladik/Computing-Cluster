@@ -130,6 +130,8 @@ void stop_cluster_server(struct ClusterServerHandle* handle)
 
 static void init_discovery_routine(struct ClusterServerHandle* handle)
 {
+	static const int PORT = 20000;
+
 	if (handle == NULL)
 	{
 		LOG_ERROR("[init_discovery_routine] Nullptr argument");
@@ -155,7 +157,7 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 	{
 		.sin_family      = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port        = htons(0)
+		.sin_port        = htons(PORT)
 	};
 
 	if (connect(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
