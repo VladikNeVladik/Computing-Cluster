@@ -32,6 +32,9 @@
 //-------------------------------------
 
 // Required predeclarations:
+static void init_server_tracking_routine(struct ClusterClientHandle* handle);
+static void free_server_tracking_routine(struct ClusterClientHandle* handle);
+
 static void init_still_alive_routine(struct ClusterClientHandle* handle);
 static void free_still_alive_routine(struct ClusterClientHandle* handle);
 
@@ -65,8 +68,9 @@ void init_cluster_client(struct ClusterClientHandle* handle)
 	}
 
 	// Init subroutines:
-	init_still_alive_routine   (handle);
-	init_task_computing_routine(handle);
+	init_server_tracking_routine(handle);
+	init_still_alive_routine    (handle);
+	init_task_computing_routine (handle);
 
 	// Discovery:
 	// Log:
@@ -103,8 +107,9 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 	}
 
 	// Free resources allocated for subroutines:
-	free_still_alive_routine   (handle);
-	free_task_computing_routine(handle);
+	free_server_tracking_routine(handle);
+	free_still_alive_routine    (handle);
+	free_task_computing_routine (handle);
 
 	// Log:
 	LOG("[CLUSTER-CLIENT] Cluster-client stopped");
@@ -117,7 +122,6 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 void discover_server(struct ClusterClientHandle* handle)
 {
 	static const int DATAGRAM_SIZE = 16;
-	static const int PORT = 20000;
 
 	if (handle == NULL)
 	{
@@ -144,7 +148,7 @@ void discover_server(struct ClusterClientHandle* handle)
 	{
 		.sin_family      = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
-		.sin_port        = htons(PORT)
+		.sin_port        = htons(0)
 	};
 
 	if (bind(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
@@ -158,18 +162,26 @@ void discover_server(struct ClusterClientHandle* handle)
 
 	struct sockaddr_in peer_addr;
 	socklen_t peer_addr_len = sizeof(peer_addr);
-
 	char buffer[DATAGRAM_SIZE];
 
-	int bytes_read = recvfrom(sock_fd, buffer, DATAGRAM_SIZE, 0, (struct sockaddr*) &peer_addr, &peer_addr_len);
-	if (bytes_read == -1)
+	int bytes_read;
+	do
 	{
-		LOG_ERROR("[discover_server] Unable to recieve discovery datagram (errno = %d)", errno);
-		exit(EXIT_FAILURE);
+		bytes_read = recvfrom(sock_fd, buffer, DATAGRAM_SIZE, 0, (struct sockaddr*) &peer_addr, &peer_addr_len);
+		if (bytes_read == -1)
+		{
+			LOG_ERROR("[discover_server] Unable to recieve discovery datagram (errno = %d)", errno);
+			exit(EXIT_FAILURE);
+		}
 	}
+	while (bytes_read != DATAGRAM_SIZE || strcmp(buffer, "@ Still Alive @") != 0);
 
 	handle->server_addr = peer_addr;
 
+	// Start tracking server discovery datagrams to drop all tasks in case server dies:
+	// start_server_tracking_routine(handle);
+
+	// Log discovery:
 	char server_host[32];
 	char server_port[32];
 	if (getnameinfo((struct sockaddr*) &handle->server_addr, sizeof(handle->server_addr),
@@ -179,16 +191,37 @@ void discover_server(struct ClusterClientHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
-	LOG("[CLUSTER-CLIENT] Discovered cluster-server at ip %s-%s", server_host, server_port);
+	LOG("[CLUSTER-CLIENT] Discovered cluster-server at %s:%s", server_host, server_port);
 }
 
-void forget_server(struct ClusterClientHandle* handle) {}
-
 //-----------------
-// Login precedure
+// Server Tracking 
 //-----------------
 
-void login_to_server(struct ClusterClientHandle* handle) {}
+static void init_server_tracking_routine(struct ClusterClientHandle* handle)
+{
+
+}
+
+static void free_server_tracking_routine(struct ClusterClientHandle* handle)
+{
+
+}
+
+// static void start_server_tracking_routine(struct ClusterClientHandle* handle)
+// {
+
+// }
+
+// static void pause_server_tracking_routine(struct ClusterClientHandle* handle)
+// {
+
+// }
+
+// static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
+// {
+
+// }
 
 //---------------------
 // Still-alive process
@@ -197,8 +230,8 @@ void login_to_server(struct ClusterClientHandle* handle) {}
 static void init_still_alive_routine(struct ClusterClientHandle* handle) {}
 static void free_still_alive_routine(struct ClusterClientHandle* handle) {}
 
-void start_still_alive_routine(struct ClusterClientHandle* handle) {}
-void pause_still_alive_routine(struct ClusterClientHandle* handle) {}
+// static void start_still_alive_routine(struct ClusterClientHandle* handle) {}
+// static void pause_still_alive_routine(struct ClusterClientHandle* handle) {}
 
 //-----------------------------
 // Computation task management 
@@ -207,8 +240,8 @@ void pause_still_alive_routine(struct ClusterClientHandle* handle) {}
 static void init_task_computing_routine(struct ClusterClientHandle* handle) {}
 static void free_task_computing_routine(struct ClusterClientHandle* handle) {}
 
-void start_task_computing_routine(struct ClusterClientHandle* handle) {}
-void pause_task_computing_routine(struct ClusterClientHandle* handle) {}
+// static void start_task_computing_routine(struct ClusterClientHandle* handle) {}
+// static void pause_task_computing_routine(struct ClusterClientHandle* handle) {}
 
 void set_maximum_load(struct ClusterClientHandle* handle) {}
 

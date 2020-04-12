@@ -39,13 +39,6 @@ struct ClusterServerHandle
 void init_cluster_server(struct ClusterServerHandle* handle);
 void stop_cluster_server(struct ClusterServerHandle* handle);
 
-//-----------------
-// Login precedure
-//-----------------
-
-void start_login_routine(struct ClusterServerHandle* handle);
-void pause_login_routine(struct ClusterServerHandle* handle);
-
 //-------------------
 // Discovery process 
 //-------------------

@@ -35,9 +35,6 @@
 //-------------------------------------
 
 // Required predeclarations:
-static void init_login_routine(struct ClusterServerHandle* handle);
-static void free_login_routine(struct ClusterServerHandle* handle);
-
 static void init_discovery_routine(struct ClusterServerHandle* handle);
 static void free_discovery_routine(struct ClusterServerHandle* handle);
 
@@ -81,7 +78,6 @@ void init_cluster_server(struct ClusterServerHandle* handle)
 	LOG("[CLUSTER-SERVER] Cluster-server initialized");
 
 	// Init subroutines:
-	init_login_routine               (handle);
 	init_discovery_routine           (handle);
 	init_still_alive_tracking_routine(handle);
 	init_task_tracking_routine       (handle);
@@ -110,14 +106,16 @@ void stop_cluster_server(struct ClusterServerHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
+	// (After this point all start/pause routine actions will fail with error)
 	if (close(handle->epoll_fd) == -1)
 	{
 		LOG_ERROR("[stop_cluster_server] Unable to close() epoll file descriptor");
 		exit(EXIT_FAILURE);
 	}
 
+	handle->epoll_fd = -1;
+
 	// Free resources allocated for subroutines:
-	free_login_routine               (handle);
 	free_discovery_routine           (handle);
 	free_still_alive_tracking_routine(handle);
 	free_task_tracking_routine       (handle);
@@ -126,24 +124,12 @@ void stop_cluster_server(struct ClusterServerHandle* handle)
 	LOG("[CLUSTER-SERVER] Cluster-server stopped");
 }
 
-//-----------------
-// Login precedure 
-//-----------------
-
-static void init_login_routine(struct ClusterServerHandle* handle) {}
-static void free_login_routine(struct ClusterServerHandle* handle) {}
-
-void start_login_routine(struct ClusterServerHandle* handle) {}
-void pause_login_routine(struct ClusterServerHandle* handle) {}
-
 //-------------------
 // Discovery process 
 //-------------------
 
 static void init_discovery_routine(struct ClusterServerHandle* handle)
 {
-	static const int PORT = 20000;
-
 	if (handle == NULL)
 	{
 		LOG_ERROR("[init_discovery_routine] Nullptr argument");
@@ -169,7 +155,7 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 	{
 		.sin_family      = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port        = htons(PORT)
+		.sin_port        = htons(0)
 	};
 
 	if (connect(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
@@ -372,57 +358,3 @@ static void* server_eventloop(void* arg)
 
 	return NULL;
 }
-
-// void Server::run_server(const char* service)
-// {
-// 	// Acquire internet address:
-// 	struct addrinfo hints;
-// 	hints.ai_flags     = AI_PASSIVE;
-// 	hints.ai_family    = AF_UNSPEC;
-// 	hints.ai_socktype  = SOCK_SEQPACKET;
-// 	hints.ai_protocol  = 0;      
-// 	hints.ai_addr      = NULL;  
-// 	hints.ai_canonname = NULL;
-// 	hints.ai_next      = NULL;
-
-// 	struct addrinfo* result = NULL;
-// 	int err = getaddrinfo(NULL, service, &hints, &result);
-// 	if (err != 0)
-// 	{
-// 		LOG_ERROR("[SERVER] getaddrinfo error: %s", gai_strerror(s));
-// 		exit(EXIT_FAILURE);
-// 	}
-
-// 	struct addrinfo* cur = rslt;
-// 	for (; cur != NULL; cur = cur->ai_next)
-// 	{
-// 		listen_sock = socket(cur->ai_faily, cur->ai_socktype, cur->ai_protocol);
-// 		if (listen_sock == -1)
-// 			continue;
-
-// 		if (bind(listen_sock, cur->ai_addr, cur->ai_addrlen) == 0)
-// 			break;
-
-// 		close(listen_sock);
-// 	}
-
-// 	if (cur == NULL)
-// 	{
-// 		LOG_ERROR("[SERVER] Unable to bind");
-// 		exit(EXIT_FAILURE);
-// 	}
-
-// 	freeaddrinfo(rslt);
-
-// 	if (listen(listen_sock, 128) == -1)
-// 	{
-// 		LOG_ERROR("[SERVER] Unable to listen");
-// 		exit(EXIT_FAILURE);
-// 	}
-
-// 	// The processing cycle:
-// 	while (true)
-// 	{
-		
-// 	}
-// }

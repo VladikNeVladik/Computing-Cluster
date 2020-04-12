@@ -31,6 +31,9 @@ struct ClusterClientHandle
 
 	// Server discovery:
 	struct sockaddr_in server_addr;
+
+	// Server tracking:
+	
 };
 
 //-------------------------------------
