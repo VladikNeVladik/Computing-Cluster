@@ -12,8 +12,6 @@ int main()
 
 	struct ClusterServerHandle server_handle;
 	init_cluster_server(&server_handle);
-
-	start_discovery_routine(&server_handle);
 	
 	while (1)
 	{

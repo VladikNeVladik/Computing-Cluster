@@ -28,101 +28,11 @@
 // Errno:
 #include <errno.h>
 
+// Cluster Server API:
 #include "ClusterServer.h"
 
-//-------------------------------------
-// Initialization and deinitialization 
-//-------------------------------------
-
-// Required predeclarations:
-static void init_discovery_routine(struct ClusterServerHandle* handle);
-static void free_discovery_routine(struct ClusterServerHandle* handle);
-
-static void init_still_alive_tracking_routine(struct ClusterServerHandle* handle);
-static void free_still_alive_tracking_routine(struct ClusterServerHandle* handle);
-
-static void init_task_tracking_routine(struct ClusterServerHandle* handle);
-static void free_task_tracking_routine(struct ClusterServerHandle* handle);
-
-static void* server_eventloop(void* arg);
-
-void init_cluster_server(struct ClusterServerHandle* handle)
-{
-	if (handle == NULL)
-	{
-		LOG_ERROR("[init_cluster_server] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
-
-	// Create epoll instance:
-	handle->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-	if (handle->epoll_fd == -1)
-	{
-		LOG_ERROR("[init_cluster_server] epoll_create1() failed");
-		exit(EXIT_FAILURE);
-	}
-
-	// Start eventloop:
-	int err = pthread_create(&handle->eventloop_thr_id, NULL, server_eventloop, (void*) handle);
-	if (err != 0)
-	{
-		LOG_ERROR("[init_cluster_server] pthread_create() failed with error %d", err);
-		exit(EXIT_FAILURE);
-	}
-
-	// Discovery:
-	handle->discovery_socket_fd = -1;
-	handle->discovery_timer_fd  = -1;
-
-	// Log:
-	LOG("[CLUSTER-SERVER] Cluster-server initialized");
-
-	// Init subroutines:
-	init_discovery_routine           (handle);
-	init_still_alive_tracking_routine(handle);
-	init_task_tracking_routine       (handle);
-}
-
-void stop_cluster_server(struct ClusterServerHandle* handle)
-{
-	if (handle == NULL)
-	{
-		LOG_ERROR("[stop_cluster_server] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
-
-	// Stop eventloop:
-	int err = pthread_cancel(handle->eventloop_thr_id);
-	if (err != 0)
-	{
-		LOG_ERROR("[stop_cluster_server] pthread_cancel() failed with error %d", err);
-		exit(EXIT_FAILURE);
-	}
-
-	err = pthread_join(handle->eventloop_thr_id, NULL);
-	if (err != 0)
-	{
-		LOG_ERROR("[stop_cluster_server] pthread_join() failed with error %d", err);
-		exit(EXIT_FAILURE);
-	}
-
-	// (After this point all start/pause routine actions will fail with error)
-	if (close(handle->epoll_fd) == -1)
-	{
-		LOG_ERROR("[stop_cluster_server] Unable to close() epoll file descriptor");
-		exit(EXIT_FAILURE);
-	}
-
-	handle->epoll_fd = -1;
-
-	// Free resources allocated for subroutines:
-	free_discovery_routine           (handle);
-	free_still_alive_tracking_routine(handle);
-	free_task_tracking_routine       (handle);
-
-	// Log:
-	LOG("[CLUSTER-SERVER] Cluster-server stopped");
-}
+// System Timing Specification:
+#include "Timeouts.h"
 
 //-------------------
 // Discovery process 
@@ -130,13 +40,9 @@ void stop_cluster_server(struct ClusterServerHandle* handle)
 
 static void init_discovery_routine(struct ClusterServerHandle* handle)
 {
-	static const int PORT = 20000;
+	static const int PORT = 9787;
 
-	if (handle == NULL)
-	{
-		LOG_ERROR("[init_discovery_routine] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
+	BUG_ON(handle == NULL, "[init_discovery_routine] Nullptr argument");
 
 	// Acquire discovery socket:
 	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -178,7 +84,7 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 
 	struct itimerspec timer_config =
 	{
-		.it_interval = {5, 0}, 
+		.it_interval = {5, 0},
 		.it_value    = {1, 0}
 	};
 	if (timerfd_settime(timer_fd, 0, &timer_config, NULL) == -1)
@@ -195,11 +101,7 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 
 static void free_discovery_routine(struct ClusterServerHandle* handle)
 {
-	if (handle == NULL)
-	{
-		LOG_ERROR("[free_discovery_routine] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
+	BUG_ON(handle == NULL, "[free_discovery_routine] Nullptr argument");
 
 	if (close(handle->discovery_socket_fd) == -1)
 	{
@@ -222,11 +124,7 @@ static void free_discovery_routine(struct ClusterServerHandle* handle)
 
 void start_discovery_routine(struct ClusterServerHandle* handle)
 {
-	if (handle == NULL)
-	{
-		LOG_ERROR("[start_discovery_routine] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
+	BUG_ON(handle == NULL, "[start_discovery_routine] Nullptr argument");
 
 	epoll_data_t event_data = 
 	{
@@ -249,11 +147,7 @@ void start_discovery_routine(struct ClusterServerHandle* handle)
 
 void pause_discovery_routine(struct ClusterServerHandle* handle)
 {
-	if (handle == NULL)
-	{
-		LOG_ERROR("[pause_discovery_routine] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
+	BUG_ON(handle == NULL, "[pause_discovery_routine] Nullptr argument");
 
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->discovery_timer_fd, NULL) == -1)
 	{
@@ -269,11 +163,7 @@ void perform_discovery_send(struct ClusterServerHandle* handle)
 {
 	static const int DATAGRAM_SIZE = 16;
 
-	if (handle == NULL)
-	{
-		LOG_ERROR("[perform_discovery_send] Nullptr argument");
-		exit(EXIT_FAILURE);
-	}
+	BUG_ON(handle == NULL, "[perform_discovery_send] Nullptr argument");
 
 	char send_buffer[DATAGRAM_SIZE];
 	int bytes_written = write(handle->discovery_socket_fd, send_buffer, 16);
@@ -330,6 +220,7 @@ static void* server_eventloop(void* arg)
 	static const int MAX_EVENTS = 16;
 
 	struct ClusterServerHandle* handle = arg;
+	BUG_ON(handle == NULL, "[server_eventloop] Nullptr argument");
 
 	struct epoll_event pending_events[MAX_EVENTS];
 	while (1)
@@ -359,4 +250,81 @@ static void* server_eventloop(void* arg)
 	}
 
 	return NULL;
+}
+
+//-------------------------------------
+// Initialization and deinitialization 
+//-------------------------------------
+
+void init_cluster_server(struct ClusterServerHandle* handle)
+{
+	BUG_ON(handle == NULL, "[init_cluster_server] Nullptr argument");
+
+	// Create epoll instance:
+	handle->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+	if (handle->epoll_fd == -1)
+	{
+		LOG_ERROR("[init_cluster_server] epoll_create1() failed");
+		exit(EXIT_FAILURE);
+	}
+
+	// Start eventloop:
+	int err = pthread_create(&handle->eventloop_thr_id, NULL, server_eventloop, (void*) handle);
+	if (err != 0)
+	{
+		LOG_ERROR("[init_cluster_server] pthread_create() failed with error %d", err);
+		exit(EXIT_FAILURE);
+	}
+
+	// Discovery:
+	handle->discovery_socket_fd = -1;
+	handle->discovery_timer_fd  = -1;
+
+	// Init subroutines:
+	init_discovery_routine           (handle);
+	init_still_alive_tracking_routine(handle);
+	init_task_tracking_routine       (handle);
+
+	// Start discovery:
+	start_discovery_routine(handle);
+
+	// Log:
+	LOG("[CLUSTER-SERVER] Cluster-server initialized");
+}
+
+void stop_cluster_server(struct ClusterServerHandle* handle)
+{
+	BUG_ON(handle == NULL, "[stop_cluster_server] Nullptr argument");
+
+	// Stop eventloop:
+	int err = pthread_cancel(handle->eventloop_thr_id);
+	if (err != 0)
+	{
+		LOG_ERROR("[stop_cluster_server] pthread_cancel() failed with error %d", err);
+		exit(EXIT_FAILURE);
+	}
+
+	err = pthread_join(handle->eventloop_thr_id, NULL);
+	if (err != 0)
+	{
+		LOG_ERROR("[stop_cluster_server] pthread_join() failed with error %d", err);
+		exit(EXIT_FAILURE);
+	}
+
+	// (After this point all start/pause routine actions will fail with error)
+	if (close(handle->epoll_fd) == -1)
+	{
+		LOG_ERROR("[stop_cluster_server] Unable to close() epoll file descriptor");
+		exit(EXIT_FAILURE);
+	}
+
+	handle->epoll_fd = -1;
+
+	// Free resources allocated for subroutines:
+	free_discovery_routine           (handle);
+	free_still_alive_tracking_routine(handle);
+	free_task_tracking_routine       (handle);
+
+	// Log:
+	LOG("[CLUSTER-SERVER] Cluster-server stopped");
 }

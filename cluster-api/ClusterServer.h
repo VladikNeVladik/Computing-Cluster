@@ -39,26 +39,9 @@ struct ClusterServerHandle
 void init_cluster_server(struct ClusterServerHandle* handle);
 void stop_cluster_server(struct ClusterServerHandle* handle);
 
-//-------------------
-// Discovery process 
-//-------------------
-
-void start_discovery_routine(struct ClusterServerHandle* handle);
-void pause_discovery_routine(struct ClusterServerHandle* handle);
-
-//----------------------
-// Still-alive tracking
-//----------------------
-
-void start_still_alive_tracking_routine(struct ClusterServerHandle* handle);
-void pause_still_alive_tracking_routine(struct ClusterServerHandle* handle);
-
 //-----------------------------
 // Computation task management 
 //-----------------------------
-
-void start_task_tracking_routine(struct ClusterServerHandle* handle);
-void pause_task_tracking_routine(struct ClusterServerHandle* handle);
 
 void add_computation_tasks  (struct ClusterServerHandle* handle);
 void get_computation_results(struct ClusterServerHandle* handle);

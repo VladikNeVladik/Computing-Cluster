@@ -12,7 +12,11 @@ int main()
 	struct ClusterClientHandle client_handle;
 	init_cluster_client(&client_handle);
 
-	discover_server(&client_handle);
+	while (1)
+	{
+		char cmd = getchar();
+		if (cmd == ' ') break;
+	}
 
 	stop_cluster_client(&client_handle);
 

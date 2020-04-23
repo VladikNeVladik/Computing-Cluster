@@ -20,13 +20,15 @@ clean:
 # CLUSTER #
 #=========#
 
-obj/logging.o : cluster-api/logging.c cluster-api/Logging.h
+HEADERS = cluster-api/Logging.h cluster-api/Timeouts.h
+
+obj/logging.o : cluster-api/logging.c cluster-api/Logging.h ${HEADERS}
 	gcc -c -fPIC ${CCFLAGS} $< -o $@
 
-obj/cluster-server.o : cluster-api/cluster-server.c cluster-api/ClusterServer.h obj/logging.o
+obj/cluster-server.o : cluster-api/cluster-server.c cluster-api/ClusterServer.h obj/logging.o ${HEADERS}
 	gcc -c -fPIC ${CCFLAGS} $< -o $@
 
-obj/cluster-client.o : cluster-api/cluster-client.c cluster-api/ClusterClient.h obj/logging.o
+obj/cluster-client.o : cluster-api/cluster-client.c cluster-api/ClusterClient.h obj/logging.o ${HEADERS}
 	gcc -c -fPIC ${CCFLAGS} $< -o $@
 
 #=============#
