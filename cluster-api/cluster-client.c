@@ -2,6 +2,7 @@
 //=========================================
 // Computing Cluster Client Implementation
 //=========================================
+
 // Feature test macros:
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
@@ -41,37 +42,78 @@
 
 static void init_server_tracking_routine(struct ClusterClientHandle* handle)
 {
-	static const int PORT = 9787;
+	// static const int PORT = 9787;
 
 	BUG_ON(handle == NULL, "[init_server_tracking_routine] Nullptr argument");
 
-	// Initialize socket:
-	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family   = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_flags    = AI_PASSIVE;
+	hints.ai_protocol = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
+
+	struct addrinfo* result;
+	if (getaddrinfo("255.255.255.255", "9787", &hints, &result) != 0)
+	{
+		LOG_ERROR("[init_server_tracking_routine] Unable to call getaddrinfo()");
+		exit(EXIT_FAILURE);
+	}
+
+	int sock_fd = -1;
+	for (struct addrinfo* addr = result; addr != NULL; addr = addr->ai_next)
+	{
+		// Initialize socket:
+		sock_fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+		if (sock_fd == -1)
+		{
+			LOG_ERROR("[init_server_tracking_routine] socket() failed");
+			continue;
+		}
+
+		uint64_t setsockopt_yes = 1;
+		if (setsockopt(sock_fd, SOL_SOCKET, SO_BROADCAST, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+		{
+			LOG_ERROR("[init_server_tracking_routine] setsockopt() failed");
+			close(sock_fd);
+			sock_fd = -1;
+			continue;
+		}
+
+		if (bind(sock_fd, addr->ai_addr, addr->ai_addrlen) == -1)
+		{
+			LOG_ERROR("[init_server_tracking_routine] bind() failed");
+			close(sock_fd);
+			sock_fd = -1;
+			continue;
+		}
+
+		break;
+	}
+
+	freeaddrinfo(result);
+
 	if (sock_fd == -1)
 	{
-		LOG_ERROR("[init_server_tracking_routine] Unable to create socket");
+		LOG_ERROR("[init_server_tracking_routine] Unable to aquire socket");
 		exit(EXIT_FAILURE);
 	}
 
-	uint64_t setsockopt_yes = 1;
-	if (setsockopt(sock_fd, SOL_SOCKET, SO_BROADCAST, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
-	{
-		LOG_ERROR("[init_server_tracking_routine] Unable to call setsockopt()");
-		exit(EXIT_FAILURE);
-	}
+	// struct sockaddr_in broadcast_addr =
+	// {
+	// 	.sin_family      = AF_INET,
+	// 	.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+	// 	.sin_port        = htons(PORT)
+	// };
 
-	struct sockaddr_in broadcast_addr =
-	{
-		.sin_family      = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port        = htons(PORT)
-	};
-
-	if (bind(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
-	{
-		LOG_ERROR("[init_server_tracking_routine] Unable to bind()");
-		exit(EXIT_FAILURE);
-	}
+	// if (bind(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
+	// {
+	// 	LOG_ERROR("[init_server_tracking_routine] Unable to bind()");
+	// 	exit(EXIT_FAILURE);
+	// }
 
 	handle->server_tracking_socket_fd = sock_fd;
 
@@ -338,8 +380,8 @@ static void* client_eventloop(void* arg)
 			// Handle "No Discovery Datagrams" Timeout:
 			if (pending_events[ev].data.fd == handle->server_tracking_timeout_fd)
 			{
-				LOG("[CLUSTER-CLIENT] No discovery datagrams recieved in a while. Dropping computations");
-				exit(EXIT_FAILURE);
+				LOG("[CLUSTER-CLIENT] No discovery datagrams recieved in a while. Quitting.");
+				exit(EXIT_SUCCESS);
 			}
 		}
 	}
