@@ -46,7 +46,7 @@ static void init_server_tracking_routine(struct ClusterClientHandle* handle)
 
 	BUG_ON(handle == NULL, "[init_server_tracking_routine] Nullptr argument");
 
-	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	int sock_fd = socket(AF_INET, SOCK_DGRAM|SOCK_NONBLOCK, 0);
 	if (sock_fd == -1)
 	{
 		LOG_ERROR("[init_server_tracking_routine] socket() failed");
@@ -176,22 +176,22 @@ static void start_server_tracking_routine(struct ClusterClientHandle* handle)
 // 	// Disarm the timer:
 // 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->server_tracking_timeout_fd, NULL) == -1)
 // 	{
-// 		LOG_ERROR("[start_server_tracking_routine] Unable to unregister timer file descriptor from epoll");
+// 		LOG_ERROR("[pause_server_tracking_routine] Unable to unregister timer file descriptor from epoll");
 // 		exit(EXIT_FAILURE);
 // 	}	
 
 // 	// Delete the socket from epoll:
 // 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->server_tracking_socket_fd, NULL) == -1)
 // 	{
-// 		LOG_ERROR("[start_server_tracking_routine] Unable to unregister socket file descriptor from epoll");
+// 		LOG_ERROR("[pause_server_tracking_routine] Unable to unregister socket file descriptor from epoll");
 // 		exit(EXIT_FAILURE);
 // 	}
 
 // 	// Log:
-// 	LOG("[CLUSTER-CLIENT] Server tracking routine stopped");
+// 	LOG("[CLUSTER-CLIENT] Server tracking routine paused");
 // }
 
-static const int DATAGRAM_SIZE = 16;
+static const int DISCOVERY_DATAGRAM_SIZE = 16;
 
 static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
 {
@@ -199,12 +199,12 @@ static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
 
 	struct sockaddr_in peer_addr;
 	socklen_t peer_addr_len = sizeof(peer_addr);
-	char buffer[DATAGRAM_SIZE];
+	char buffer[DISCOVERY_DATAGRAM_SIZE];
 
 	int bytes_read;
 	do
 	{
-		bytes_read = recvfrom(handle->server_tracking_socket_fd, buffer, DATAGRAM_SIZE, 0, (struct sockaddr*) &peer_addr, &peer_addr_len);
+		bytes_read = recvfrom(handle->server_tracking_socket_fd, buffer, DISCOVERY_DATAGRAM_SIZE, 0, (struct sockaddr*) &peer_addr, &peer_addr_len);
 		if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
 		{
 			LOG_ERROR("[catch_server_discovery_datagram] Unable to recieve discovery datagram (errno = %d)", errno);
@@ -212,7 +212,7 @@ static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
 		}
 
 		// Restart timer:
-		if (bytes_read == DATAGRAM_SIZE && bcmp(&peer_addr, &handle->server_addr, peer_addr_len) == 0)
+		if (bytes_read == DISCOVERY_DATAGRAM_SIZE && bcmp(&peer_addr, &handle->server_addr, peer_addr_len) == 0)
 		{
 			struct itimerspec timer_config =
 			{
@@ -237,26 +237,26 @@ static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
 
 static void discover_server(struct ClusterClientHandle* handle)
 {
-	BUG_ON(handle == NULL, "[discover_server] Nullptr argument");
+	BUG_ON(handle == NULL, "[discover_server_local] Nullptr argument");
 
 	// Wait for incomping datagram:
 	LOG("[CLUSTER-CLIENT] Waiting for discovery datagram");
 
 	struct sockaddr_in peer_addr;
 	socklen_t peer_addr_len = sizeof(peer_addr);
-	char buffer[DATAGRAM_SIZE];
+	char buffer[DISCOVERY_DATAGRAM_SIZE];
 
 	int bytes_read;
 	do
 	{
-		bytes_read = recvfrom(handle->server_tracking_socket_fd, buffer, DATAGRAM_SIZE, 0, (struct sockaddr*) &peer_addr, &peer_addr_len);
+		bytes_read = recvfrom(handle->server_tracking_socket_fd, buffer, DISCOVERY_DATAGRAM_SIZE, 0, (struct sockaddr*) &peer_addr, &peer_addr_len);
 		if (bytes_read == -1)
 		{
-			LOG_ERROR("[discover_server] Unable to recieve discovery datagram (errno = %d)", errno);
+			LOG_ERROR("[discover_server_local] Unable to recieve discovery datagram (errno = %d)", errno);
 			exit(EXIT_FAILURE);
 		}
 	}
-	while (bytes_read != DATAGRAM_SIZE);
+	while (bytes_read != DISCOVERY_DATAGRAM_SIZE);
 
 	// Save server address:
 	handle->server_addr = peer_addr;
@@ -264,7 +264,7 @@ static void discover_server(struct ClusterClientHandle* handle)
 	// Switch socket into nonblocking mode:
 	if (fcntl(handle->server_tracking_socket_fd, F_SETFD, O_NONBLOCK) == -1)
 	{
-		LOG_ERROR("[discover_server] Unable to switch socket into non-blocking mode");
+		LOG_ERROR("[discover_server_local] Unable to switch socket into non-blocking mode");
 		exit(EXIT_FAILURE);
 	}
 
@@ -274,25 +274,55 @@ static void discover_server(struct ClusterClientHandle* handle)
 	if (getnameinfo((struct sockaddr*) &handle->server_addr, sizeof(handle->server_addr),
 		server_host, 32, server_port, 32, NI_NUMERICHOST|NI_NUMERICSERV) != 0)
 	{
-		LOG_ERROR("[discover_server] Unable to call getnameinfo()");
+		LOG_ERROR("[discover_server_local] Unable to call getnameinfo()");
 		exit(EXIT_FAILURE);
 	}
 
-	LOG("[CLUSTER-CLIENT] Discovered cluster-server at %s:%s", server_host, server_port);
+	LOG("[CLUSTER-CLIENT] Automatically discovered cluster-server at %s:%s", server_host, server_port);
 
 	// Start tracking server discovery datagrams to drop all tasks in case server dies:
 	start_server_tracking_routine(handle);
 }
 
-//---------------------
-// Still-alive process
-//---------------------
+//-------------------------------
+// Connection Management Routine 
+//-------------------------------
 
-static void init_still_alive_routine(struct ClusterClientHandle* handle) {}
-static void free_still_alive_routine(struct ClusterClientHandle* handle) {}
+static void init_connection_management_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[init_connection_management_routine] Nullptr argument");
 
-// static void start_still_alive_routine(struct ClusterClientHandle* handle) {}
-// static void pause_still_alive_routine(struct ClusterClientHandle* handle) {}
+	// Acquire socket:
+	int sock_fd = -1;
+	if (handle->local_discovery)
+	{
+		sock_fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, 0);
+		if (sock_fd == -1)
+		{
+			LOG_ERROR("[init_connection_management_routine] Unable to call socket()");
+			exit(EXIT_FAILURE);
+		}
+
+		uint8_t setsockopt_yes = 1;
+		if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+		{
+			LOG_ERROR("[init_connection_management_routine] Unable to call setsockopt()");
+			exit(EXIT_FAILURE);
+		}
+
+
+	} 
+}
+
+static void free_connection_management_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[free_connection_management_routine] Nullptr argument");
+
+	
+}
+
+static void start_connection_management_routine(struct ClusterClientHandle* handle) {}
+static void pause_connection_management_routine(struct ClusterClientHandle* handle) {}
 
 //-----------------------------
 // Computation task management 
@@ -303,8 +333,6 @@ static void free_task_computing_routine(struct ClusterClientHandle* handle) {}
 
 // static void start_task_computing_routine(struct ClusterClientHandle* handle) {}
 // static void pause_task_computing_routine(struct ClusterClientHandle* handle) {}
-
-void set_maximum_load(struct ClusterClientHandle* handle) {}
 
 //------------------
 // Client Eventloop 
@@ -352,9 +380,14 @@ static void* client_eventloop(void* arg)
 // Initialization and deinitialization 
 //-------------------------------------
 
-void init_cluster_client(struct ClusterClientHandle* handle)
+void init_cluster_client(struct ClusterClientHandle* handle, unsigned max_threads, const char* master_host)
 {
 	BUG_ON(handle == NULL, "[init_cluster_client] Nullptr argument");
+
+	// Save desired client configuration:
+	handle->max_threads = max_threads;
+	handle->local_discovery = (master_host == NULL);
+	handle->server_hostname = master_host;
 
 	// Create epoll instance:
 	handle->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
@@ -373,12 +406,21 @@ void init_cluster_client(struct ClusterClientHandle* handle)
 	}
 
 	// Init subroutines:
-	init_server_tracking_routine(handle);
-	init_still_alive_routine    (handle);
-	init_task_computing_routine (handle);
+	if (!handle->local_discovery)
+	{
+		init_server_tracking_routine(handle);
+	}
 
-	// Discovery:
-	discover_server(handle);
+	init_task_computing_routine(handle);
+
+	// Perform discovery:
+	if (handle->local_discovery)
+	{
+		discover_server(handle);
+	}
+
+	// Perform login procedure:
+
 
 	// Log:
 	LOG("[CLUSTER-CLIENT] Cluster-client initialized");
@@ -411,7 +453,6 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 
 	// Free resources allocated for subroutines:
 	free_server_tracking_routine(handle);
-	free_still_alive_routine    (handle);
 	free_task_computing_routine (handle);
 
 	// Log:

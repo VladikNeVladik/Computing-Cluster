@@ -29,25 +29,27 @@ struct ClusterClientHandle
 	int epoll_fd;
 	pthread_t eventloop_thr_id;
 
+	// Server discovery:
+	bool local_discovery;
+	struct sockaddr_in server_addr;
+	const char* server_hostname;
+
 	// Server tracking:
 	int server_tracking_socket_fd;
 	int server_tracking_timeout_fd;
 
-	// Server discovery:
-	struct sockaddr_in server_addr;
+	// Connection management:
+	int conn_socket_fd;
+
+	// Computation task management:
+	unsigned max_threads;
 };
 
 //-------------------------------------
 // Initialization and deinitialization 
 //-------------------------------------
 
-void init_cluster_client(struct ClusterClientHandle* handle);
+void init_cluster_client(struct ClusterClientHandle* handle, unsigned max_threads, const char* master_host = NULL);
 void stop_cluster_client(struct ClusterClientHandle* handle);
-
-//-----------------------------
-// Computation task management 
-//-----------------------------
-
-void set_maximum_load(struct ClusterClientHandle* handle);
 
 #endif // COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED

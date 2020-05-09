@@ -52,7 +52,7 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
-	uint64_t setsockopt_yes = 1;
+	uint8_t setsockopt_yes = 1;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_BROADCAST, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
 		LOG_ERROR("[init_discovery_routine] Unable to call setsockopt()");
