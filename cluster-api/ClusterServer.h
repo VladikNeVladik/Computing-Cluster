@@ -21,6 +21,8 @@
 
 #include <pthread.h>
 
+#include "Connection.h"
+
 struct ClusterServerHandle
 {
 	// Eventloop:
@@ -30,6 +32,9 @@ struct ClusterServerHandle
 	// Discovery:
 	int discovery_socket_fd;
 	int discovery_timer_fd;
+
+	// Connection management:
+	struct Connection* client_conns;
 };
 
 //-------------------------------------
