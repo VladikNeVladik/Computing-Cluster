@@ -35,7 +35,7 @@
 #include "Timeouts.h"
 
 //-------------------
-// Discovery process 
+// Discovery process
 //-------------------
 
 static void init_discovery_routine(struct ClusterServerHandle* handle)
@@ -126,7 +126,7 @@ void start_discovery_routine(struct ClusterServerHandle* handle)
 {
 	BUG_ON(handle == NULL, "[start_discovery_routine] Nullptr argument");
 
-	epoll_data_t event_data = 
+	epoll_data_t event_data =
 	{
 		.fd = handle->discovery_timer_fd
 	};
@@ -199,7 +199,7 @@ void start_still_alive_tracking_routine(struct ClusterServerHandle* handle) {}
 void pause_still_alive_tracking_routine(struct ClusterServerHandle* handle) {}
 
 //-----------------------------
-// Computation task management 
+// Computation task management
 //-----------------------------
 
 static void init_task_tracking_routine(struct ClusterServerHandle* handle) {}
@@ -208,11 +208,10 @@ static void free_task_tracking_routine(struct ClusterServerHandle* handle) {}
 void start_task_tracking_routine(struct ClusterServerHandle* handle) {}
 void pause_task_tracking_routine(struct ClusterServerHandle* handle) {}
 
-void add_computation_tasks  (struct ClusterServerHandle* handle) {}
-void get_computation_results(struct ClusterServerHandle* handle) {}
+void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret){}
 
 //------------------
-// Server Eventloop 
+// Server Eventloop
 //------------------
 
 static void* server_eventloop(void* arg)
@@ -253,7 +252,7 @@ static void* server_eventloop(void* arg)
 }
 
 //-------------------------------------
-// Initialization and deinitialization 
+// Initialization and deinitialization
 //-------------------------------------
 
 void init_cluster_server(struct ClusterServerHandle* handle)
