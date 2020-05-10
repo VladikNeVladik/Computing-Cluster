@@ -10,13 +10,13 @@
 #define COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED
 
 //----------------
-// Enable Logging 
+// Enable Logging
 //----------------
 
 #include "Logging.h"
 
 //-------------
-// Client Data 
+// Client Data
 //-------------
 
 #include <pthread.h>
@@ -37,15 +37,23 @@ struct ClusterClientHandle
 	struct sockaddr_in server_addr;
 };
 
+struct thread_info
+{
+    int num_cpu;
+	int line_size;
+	int event_fd;
+	void* data_pack;
+};
+
 //-------------------------------------
-// Initialization and deinitialization 
+// Initialization and deinitialization
 //-------------------------------------
 
 void init_cluster_client(struct ClusterClientHandle* handle);
 void stop_cluster_client(struct ClusterClientHandle* handle);
 
 //-----------------------------
-// Computation task management 
+// Computation task management
 //-----------------------------
 
 void set_maximum_load(struct ClusterClientHandle* handle);
