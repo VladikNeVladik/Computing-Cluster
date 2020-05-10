@@ -40,9 +40,9 @@ struct ClusterClientHandle
 struct thread_info
 {
     int num_cpu;
-	int line_size;
-	int event_fd;
-	void* data_pack;
+    int line_size;
+    int event_fd;
+    void* data_pack;
 };
 
 //-------------------------------------
@@ -56,6 +56,6 @@ void stop_cluster_client(struct ClusterClientHandle* handle);
 // Computation task management
 //-----------------------------
 
-void set_maximum_load(struct ClusterClientHandle* handle);
+client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size);
 
 #endif // COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED
