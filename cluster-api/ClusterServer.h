@@ -10,13 +10,13 @@
 #define COMPUTING_CLUSTER_SERVER_HPP_INCLUDED
 
 //----------------
-// Enable Logging 
+// Enable Logging
 //----------------
 
 #include "Logging.h"
 
 //-------------
-// Server Data 
+// Server Data
 //-------------
 
 #include <pthread.h>
@@ -52,16 +52,16 @@ struct ClusterServerHandle
 };
 
 //-------------------------------------
-// Initialization and deinitialization 
+// Initialization and deinitialization
 //-------------------------------------
 
 void init_cluster_server(struct ClusterServerHandle* handle);
 void stop_cluster_server(struct ClusterServerHandle* handle);
 
 //-----------------------------
-// Computation task management 
+// Computation task management
 //-----------------------------
 
-
+void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
 
 #endif // COMPUTING_CLUSTER_SERVER_HPP_INCLUDED

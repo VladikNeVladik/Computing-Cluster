@@ -40,7 +40,7 @@
 #include "Config.h"
 
 //-------------------
-// Discovery process 
+// Discovery process
 //-------------------
 
 static void init_discovery_routine(struct ClusterServerHandle* handle)
@@ -129,7 +129,7 @@ void start_discovery_routine(struct ClusterServerHandle* handle)
 {
 	BUG_ON(handle == NULL, "[start_discovery_routine] Nullptr argument");
 
-	epoll_data_t event_data = 
+	epoll_data_t event_data =
 	{
 		.fd = handle->discovery_timer_fd
 	};
@@ -375,6 +375,7 @@ static void delete_connection(struct ClusterServerHandle* handle, size_t client_
 {
 	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
 
+
 	// Add socket to epoll:
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->client_conns[client_index].socket_fd, NULL) == -1)
 	{
@@ -439,9 +440,11 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 	// Log:
 	LOG("[CLUSTER-SERVER] Incoming connection request accepted");
 }
+=======
+void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret){}
 
 //------------------
-// Server Eventloop 
+// Server Eventloop
 //------------------
 
 static void* server_eventloop(void* arg)
@@ -544,7 +547,7 @@ static void* server_eventloop(void* arg)
 }
 
 //-------------------------------------
-// Initialization and deinitialization 
+// Initialization and deinitialization
 //-------------------------------------
 
 void init_cluster_server(struct ClusterServerHandle* handle)
