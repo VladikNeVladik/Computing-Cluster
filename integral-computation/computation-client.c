@@ -33,16 +33,9 @@ int main(int argc, char* argv[])
 	  LOG_ERROR("[client] error number of threads");
 	  exit(EXIT_FAILURE);
 	}
-  
-	struct ClusterClientHandle client_handle;
-	init_cluster_client(&client_handle, 10, NULL);
 
 	size_t num_threads = 5;
-	client_compute(&client_handle, num_threads, sizeof(struct task_data), sizeof(struct ret_data));
-
-	while (1);
-
-	stop_cluster_client(&client_handle);
+	client_compute(num_threads, sizeof(struct task_data), sizeof(struct ret_data), integral_thread);
 
 	return EXIT_SUCCESS;
 }
@@ -89,13 +82,13 @@ void* integral_thread(void* info)
 		exit(EXIT_FAILURE);
 	}
 
-	out->sum = 0.0;
+	((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum = 0.0;
 
     for (; x < end; x += delta)// Check x and delta in asm version
-        out->sum += func(x) * delta;
+        ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(x) * delta;
 
-    out->sum += func(start) * delta / 2;
-    out->sum += func(end) * delta / 2;
+    ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(start) * delta / 2;
+    ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(end) * delta / 2;
     ////////////////////////////////////////////////////////////////////////////
 
 	int sem_fd = ((struct thread_info*)info)->event_fd;
@@ -107,5 +100,5 @@ void* integral_thread(void* info)
 		exit(EXIT_FAILURE);
 	}
 
-    return out;
+    return;
 }

@@ -54,14 +54,27 @@ struct ClusterClientHandle
 	// Computation task management:
 	size_t max_threads;
 	bool* computations_ready;
+	bool* empty_thead;
+	size_t in_process;
+
+    // thread managment
+	struct thread_info* thread_manager;
+	void* task_buffer;
+	void* ret_buffer;
+
+	size_t ret_size;
+	size_t task_size;
 };
 
 struct thread_info
 {
+	pthread_t thread_id;
+	size_t num_of_task
     int num_cpu;
     int line_size;
     int event_fd;
     void* data_pack;
+	void* ret_pack;
 };
 
 //-------------------------------------

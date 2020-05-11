@@ -40,21 +40,14 @@ int main()
 		task_buff[i].step  = diff;
 	}
 
-	struct ClusterServerHandle server_handle;
-	init_cluster_server(&server_handle);
-
-	void* ret = compute_task(&server_handle, num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
+	int ret = compute_task(num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
 	if (ret < 0)
 	{
 		LOG_ERROR("[compute_task] code error %p", ret);
 		exit(EXIT_FAILURE);
 	}
-	
-	while (1);
 
 	free(task_buff);
-
-	stop_cluster_server(&server_handle);
 
 	double result = 0.0;
 	for (size_t i = 0; i < num_tasks; i++)
