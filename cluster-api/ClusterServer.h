@@ -21,7 +21,19 @@
 
 #include <pthread.h>
 
-#include "Connection.h"
+// Bool:
+typedef char bool;
+
+struct Connection
+{
+	int  socket_fd;
+	bool can_read;
+	bool can_write;
+
+	// Hot fix variable: !!!!
+	bool   returned_task;
+	size_t active_computations;
+};
 
 struct ClusterServerHandle
 {
@@ -34,7 +46,9 @@ struct ClusterServerHandle
 	int discovery_timer_fd;
 
 	// Connection management:
+	int accept_socket_fd;
 	struct Connection* client_conns;
+	size_t max_clients;
 };
 
 //-------------------------------------
@@ -49,6 +63,5 @@ void stop_cluster_server(struct ClusterServerHandle* handle);
 //-----------------------------
 
 void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
-
 
 #endif // COMPUTING_CLUSTER_SERVER_HPP_INCLUDED

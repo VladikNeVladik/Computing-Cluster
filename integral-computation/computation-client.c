@@ -23,21 +23,22 @@ int main(int argc, char* argv[])
 
 	if (argc != 2)
 	{
-		LOG_ERROR("[client] num of arguments != 2");
-		exit(EXIT_FAILURE);
+	  LOG_ERROR("[client] num of arguments != 2");
+	  exit(EXIT_FAILURE);
 	}
+
 
 	long int num_thr = give_num(argv[1]);
-    if (num_thr <= 0)
+  if (num_thr <= 0)
 	{
-		LOG_ERROR("[client] error number of threads");
-		exit(EXIT_FAILURE);
+	  LOG_ERROR("[client] error number of threads");
+	  exit(EXIT_FAILURE);
 	}
+  
+  struct ClusterClientHandle client_handle;
+	init_cluster_client(&client_handle, 10, NULL);
 
-	struct ClusterClientHandle client_handle;
-	init_cluster_client(&client_handle);
-
-    client_compute(&client_handle, num_threads, sizeof(task_data), sizeof(ret_data));
+  client_compute(&client_handle, num_threads, sizeof(task_data), sizeof(ret_data));
 
 	stop_cluster_client(&client_handle);
 

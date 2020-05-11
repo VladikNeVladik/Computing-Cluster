@@ -20,7 +20,7 @@ clean:
 # CLUSTER #
 #=========#
 
-HEADERS = cluster-api/Logging.h cluster-api/Timeouts.h
+HEADERS = cluster-api/Logging.h cluster-api/Config.h
 
 obj/logging.o : cluster-api/logging.c cluster-api/Logging.h ${HEADERS}
 	gcc -c -fPIC ${CCFLAGS} $< -o $@
