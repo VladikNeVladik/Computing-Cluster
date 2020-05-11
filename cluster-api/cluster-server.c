@@ -182,9 +182,9 @@ void perform_discovery_send(struct ClusterServerHandle* handle)
 	LOG("[CLUSTER-SERVER] Sent discovery datagram");
 }
 
-//----------------------
-// Still-alive tracking
-//----------------------
+//-----------------------
+// Connection Management
+//-----------------------
 
 static void init_connection_management_routine(struct ClusterServerHandle* handle)
 {
@@ -206,6 +206,8 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 	{
 		handle->client_conns[i].socket_fd = -1;	
 	}
+
+	handle->num_clients = 0;
 
 	// Get socket:
 	int sock_fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, IPPROTO_TCP);
@@ -320,30 +322,6 @@ static void pause_connection_management_routine(struct ClusterServerHandle* hand
 	LOG("[CLUSTER-SERVER] Connection management paused");
 }
 
-static void add_connection(struct ClusterServerHandle* handle, size_t client_index)
-{
-	BUG_ON(handle == NULL, "[start_connection_management_routine] Nullptr argument");
-
-	// Add the socket to epoll:
-	epoll_data_t event_data = 
-	{
-		.fd = handle->client_conns[client_index].socket_fd
-	};
-	struct epoll_event event_config = 
-	{
-		.events = EPOLLIN|EPOLLOUT|EPOLLHUP,
-		.data   = event_data
-	};
-	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->client_conns[client_index].socket_fd, &event_config) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to add connection#%03zu to epoll", client_index);
-		exit(EXIT_FAILURE);
-	}
-
-	// Log:
-	LOG("[CLUSTER-SERVER] Connection #%03zu now active", client_index);	
-}
-
 static void update_connection_management(struct ClusterServerHandle* handle, size_t client_index)
 {
 	BUG_ON(handle == NULL, "[start_conn_in_management] Nullptr argument");
@@ -375,8 +353,13 @@ static void delete_connection(struct ClusterServerHandle* handle, size_t client_
 {
 	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
 
+	// Start accepting incoming connections:
+	if (handle->num_clients == handle->max_clients)
+	{
+		start_connection_management_routine(handle);
+	}
 
-	// Add socket to epoll:
+	// Delete socket from epoll:
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->client_conns[client_index].socket_fd, NULL) == -1)
 	{
 		LOG_ERROR("[delete_connection] Unable to delete connection#%03zu from epoll", client_index);
@@ -391,6 +374,8 @@ static void delete_connection(struct ClusterServerHandle* handle, size_t client_
 
 	handle->client_conns[client_index].socket_fd = -1;
 
+	handle->num_clients -= 1;
+	
 	// Log:
 	LOG("[CLUSTER-CLIENT] Deleted connection#%03zu", client_index);
 }
@@ -416,15 +401,18 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 		if (handle->client_conns[i].socket_fd == -1)
 		{
 			client_index = i;
+			handle->num_clients += 1;
 			break;
 		}
 	}
 
-	if (client_index == -1)
+	// Stop accepting connections if there is no memory to keep track of them:
+	if (handle->num_clients == handle->max_clients)
 	{
 		pause_connection_management_routine(handle);
-		return;
 	}
+
+	BUG_ON(client_index == -1, "[accept_incoming_connection_request] No free cell in the connection array");
 
 	handle->client_conns[client_index] = (struct Connection)
 	{
@@ -435,13 +423,31 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 		.active_computations  = 0
 	};
 
-	add_connection(handle, client_index);
+	// Add the socket to epoll:
+	epoll_data_t event_data = 
+	{
+		.fd = handle->client_conns[client_index].socket_fd
+	};
+	struct epoll_event event_config = 
+	{
+		.events = EPOLLIN|EPOLLOUT|EPOLLHUP,
+		.data   = event_data
+	};
+	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->client_conns[client_index].socket_fd, &event_config) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to add connection#%03zu to epoll", client_index);
+		exit(EXIT_FAILURE);
+	}
 
 	// Log:
 	LOG("[CLUSTER-SERVER] Incoming connection request accepted");
+	LOG("[CLUSTER-SERVER] Connection#%03zu now active", client_index);
 }
-=======
-void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret){}
+
+void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret)
+{
+	return NULL;
+}
 
 //------------------
 // Server Eventloop
