@@ -48,6 +48,7 @@ struct ClusterServerHandle
 	// Connection management:
 	int accept_socket_fd;
 	struct Connection* client_conns;
+	size_t num_clients;
 	size_t max_clients;
 };
 

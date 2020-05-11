@@ -429,6 +429,15 @@ static void free_task_computing_routine(struct ClusterClientHandle* handle)
 // static void start_task_computing_routine(struct ClusterClientHandle* handle) {}
 // static void pause_task_computing_routine(struct ClusterClientHandle* handle) {}
 
+//-------------------------
+// Task Management Routine
+//-------------------------
+
+void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size)
+{
+	
+}
+
 //------------------
 // Client Eventloop 
 //------------------

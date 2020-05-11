@@ -54,9 +54,6 @@ struct ClusterClientHandle
 	// Computation task management:
 	size_t max_threads;
 	bool* computations_ready;
-
-	// Server discovery:
-	struct sockaddr_in server_addr;
 };
 
 struct thread_info
@@ -78,6 +75,6 @@ void stop_cluster_client(struct ClusterClientHandle* handle);
 // Computation task management
 //-----------------------------
 
-client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size);
+void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size);
 
 #endif // COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED
