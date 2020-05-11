@@ -23,6 +23,16 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
+// Bool:
+typedef char bool;
+
+struct Connection
+{
+	int  socket_fd;
+	bool can_read;
+	bool can_write;
+};
+
 struct ClusterClientHandle
 {
 	// Eventloop:
@@ -31,25 +41,26 @@ struct ClusterClientHandle
 
 	// Server discovery:
 	bool local_discovery;
-	struct sockaddr_in server_addr;
 	const char* server_hostname;
+	struct sockaddr_in server_addr;
 
 	// Server tracking:
 	int server_tracking_socket_fd;
 	int server_tracking_timeout_fd;
 
 	// Connection management:
-	int conn_socket_fd;
+	struct Connection server_conn;
 
 	// Computation task management:
-	unsigned max_threads;
+	size_t max_threads;
+	bool* computations_ready;
 };
 
 //-------------------------------------
 // Initialization and deinitialization 
 //-------------------------------------
 
-void init_cluster_client(struct ClusterClientHandle* handle, unsigned max_threads, const char* master_host = NULL);
+void init_cluster_client(struct ClusterClientHandle* handle, size_t max_threads, const char* master_host);
 void stop_cluster_client(struct ClusterClientHandle* handle);
 
 #endif // COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED

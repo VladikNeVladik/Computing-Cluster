@@ -21,6 +21,20 @@
 
 #include <pthread.h>
 
+// Bool:
+typedef char bool;
+
+struct Connection
+{
+	int  socket_fd;
+	bool can_read;
+	bool can_write;
+
+	// Hot fix variable: !!!!
+	bool   returned_task;
+	size_t active_computations;
+};
+
 struct ClusterServerHandle
 {
 	// Eventloop:
@@ -30,6 +44,11 @@ struct ClusterServerHandle
 	// Discovery:
 	int discovery_socket_fd;
 	int discovery_timer_fd;
+
+	// Connection management:
+	int accept_socket_fd;
+	struct Connection* client_conns;
+	size_t max_clients;
 };
 
 //-------------------------------------
@@ -43,7 +62,6 @@ void stop_cluster_server(struct ClusterServerHandle* handle);
 // Computation task management 
 //-----------------------------
 
-void add_computation_tasks  (struct ClusterServerHandle* handle);
-void get_computation_results(struct ClusterServerHandle* handle);
+
 
 #endif // COMPUTING_CLUSTER_SERVER_HPP_INCLUDED

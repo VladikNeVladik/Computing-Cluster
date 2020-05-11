@@ -10,7 +10,7 @@ int main()
 	set_log_file("log/CLIENT-LOG.log");
 
 	struct ClusterClientHandle client_handle;
-	init_cluster_client(&client_handle);
+	init_cluster_client(&client_handle, 10, NULL);
 
 	while (1)
 	{
