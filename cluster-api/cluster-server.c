@@ -62,6 +62,14 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
+	// Disable the TIME-WAIT state of a socket:
+	int setsockopt_yes = 1;
+	if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+	{
+		LOG_ERROR("[init_discovery_routine] Unable to set SO_REUSEADDR socket option");
+		exit(EXIT_FAILURE);
+	}
+
 	struct sockaddr_in broadcast_addr =
 	{
 		.sin_family      = AF_INET,
@@ -190,10 +198,8 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 {
 	BUG_ON(handle == NULL, "[init_connection_management_routine] Nullptr argument");
 
-	// HOT FIX !!!! HOT FIX !!!! HOT FIX !!!! HOT FIX !!!! HOT FIX !!!! HOT FIX !!!!
-	/* HOT FIX !!!! */ handle->max_clients = 10;        // HOT FIX !!!! HOT FIX !!!!
-	// HOT FIX !!!! HOT FIX !!!! HOT FIX !!!! HOT FIX !!!! HOT FIX !!!! HOT FIX !!!!
-
+	handle->max_clients = MAX_SIMULTANEOUS_CONNECTIONS;
+	
 	// Create connection table:
 	handle->client_conns = (struct Connection*) calloc(handle->max_clients, sizeof(*handle->client_conns));
 	if (handle->client_conns == NULL)
@@ -234,6 +240,14 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPALIVE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable the TIME-WAIT state of a socket:
+	int setsockopt_yes = 1;
+	if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set SO_REUSEADDR socket option");
 		exit(EXIT_FAILURE);
 	}
 
