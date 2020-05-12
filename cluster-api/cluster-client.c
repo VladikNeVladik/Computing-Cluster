@@ -441,12 +441,34 @@ static void free_task_computing_routine(struct ClusterClientHandle* handle)
 // Task Management Routine
 //-------------------------
 
-void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size)
+static int cache_line_size()
+{
+    errno = 0;
+    FILE* cache_info = fopen("/sys/bus/cpu/devices/cpu0/cache/index0/coherency_line_size", "r");
+    if (cache_info == NULL)
+    {
+        perror("Can't open /sys/bus/cpu/devices/cpu0/cache/index0/coherency_line_size\n");
+        return E_ERROR;
+    }
+
+    int line_size = 0;
+    int ret = fscanf(cache_info, "%d", &line_size);
+    if (ret != 1)
+    {
+        perror("Can't scan coherency_line_size\n");
+        return E_ERROR;
+    }
+
+    return line_size;
+}
+
+void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size, void* (*thread_func)(void*))
 {
 	BUG_ON(handle == NULL, "[client_compute] Nullptr handle");
 	BUG_ON(num_threads == 0, "[client_compute] number of threads is zero");
 	BUG_ON(task_size == 0, "[client_compute] task size is zero");
 	BUG_ON(ret_size == 0, "[client_compute] ret size is zero");
+	BUG_ON(thread_func == NULL, "[client_compute] Nullptr handle");
 
 	struct ClusterClientHandle handle;
 
@@ -455,6 +477,7 @@ void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size
 	handle.server_hostname = master_host;
 	handle.ret_size        = ret_size;
 	handle.task_size       = task_size;
+	handle.thread_func     = thread_func;
 
 	handle.thread_manager = (struct thread_info*) calloc(max_threads, sizeof(struct thread_info));
 	if (handle.thread_manager == NULL)
@@ -501,6 +524,44 @@ void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size
 	free(handle.thread_info);
 }
 
+static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
+{
+	BUG_ON(handle == NULL, "[start_thread] handle is NULL");
+	BUG_ON(buff == NULL, "[start_thread] recv buff is NULL");
+
+	handle->thread_manager[num].num_of_task = *((size_t*)buff);
+	buff += sizeof(size_t);
+    memcpy(handle->data_pack, buff, handle->task_size);
+
+    pthread_attr_t attr;
+
+	ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	ret = pthread_create(handle->thread_manager[num].thread_id, &attr, handle->thread_func, &(handle->task_manager[num]));
+	if (ret < 0)
+	{
+		LOG_ERROR("[start_thread] Creating thread error");
+		exit(EXIT_FAILURE);
+	}
+
+    handle->in_process++;
+	handle->empty_thread[num] = 0;
+}
+
+static void prepare_ret_buff(struct ClusterClientHandle* handle, size_t num, char* buff)
+{
+	BUG_ON(handle == NULL, "[prepare_ret_buff] handle is NULL");
+	BUG_ON(buff == NULL, "[prepare_ret_buff] recv buff is NULL");
+
+	buff[0] = 1;
+	buff++;
+	(*(size_t*)buff) = handle->task_manager[num].num_of_task;
+	buff += sizeof(size_t);
+    memcpy(buff, handle->task_manager[num].ret_pack, handle->ret_size);
+
+	handle->in_process--;
+	handle->empty_thread[num] = 1;
+}
 //------------------
 // Client Eventloop
 //------------------
@@ -555,7 +616,7 @@ static void* client_eventloop(void* arg)
 			{
 				if (pending_events[ev].data.fd == handle->thread_manager[j].event_fd && pending_events[ev].events & EPOLLIN)
 				{
-					handle->computations_ready[i] = 1;
+					handle->computations_ready[j] = 1;
 
 					uint64_t out = 0;
 					int ret = read(handle->thread_manager[j].event_fd, &out, sizeof(uint64_t));
@@ -564,6 +625,9 @@ static void* client_eventloop(void* arg)
 						LOG_ERROR("[client_eventloop] Unable to reduce eventfd");
 						exit(EXIT_FAILURE);
 					}
+
+					handle->server_conn.can_write = 1;
+					update_conn_management(handle);
 				}
 			}
 
@@ -582,11 +646,9 @@ static void* client_eventloop(void* arg)
 
 				for (size_t i = 0; i < handle->max_threads; ++i)
 				{
-					if (handle->empty_thead[i] == 0)
+					if (handle->empty_thead[i] == 1)
 					{
-						handle->empty_thead[i] = 1;
 						start_thread(handle, i, recv_buffer);
-						(handle->in_process)++;
 						break;
 					}
 				}
@@ -603,7 +665,7 @@ static void* client_eventloop(void* arg)
 				size_t i = 0;
 				for (; i < handle->max_threads; ++i)
 				{
-					if (handle->empty_thead[i] == 0)
+					if (handle->empty_thead[i] == 1)
 					{
 						char send_buffer[SEND_BUFFER_SIZE] = {0};
 						int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
@@ -627,9 +689,8 @@ static void* client_eventloop(void* arg)
 						if (handle->computations_ready[i] == 1)
 						{
 							char send_buffer[SEND_BUFFER_SIZE];
-
 							prepare_ret_buff(handle, i, send_buffer);
-							
+
 							int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 							if (bytes_written != SEND_BUFFER_SIZE)
 							{
@@ -751,12 +812,12 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 	BUG_ON(handle == NULL, "[stop_cluster_client] Nullptr argument");
 
 	// Stop eventloop:
-	int err = pthread_cancel(handle->eventloop_thr_id);
+	/*int err = pthread_cancel(handle->eventloop_thr_id);
 	if (err != 0)
 	{
 		LOG_ERROR("[stop_cluster_client] pthread_cancel() failed with error %d", err);
 		exit(EXIT_FAILURE);
-	}
+	}*/
 
 	err = pthread_join(handle->eventloop_thr_id, NULL);
 	if (err != 0)

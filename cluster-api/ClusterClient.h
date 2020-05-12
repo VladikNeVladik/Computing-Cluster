@@ -64,6 +64,8 @@ struct ClusterClientHandle
 
 	size_t ret_size;
 	size_t task_size;
+
+	void* (*thread_func)(void*);
 };
 
 struct thread_info
