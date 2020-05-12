@@ -466,8 +466,8 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
 	struct ClusterServerHandle handle;
 
     errno = 0;
-	handle.task_manager = (struct task_info*) calloc(num_tasks, sizeof(task_info));
-	if (task_manager == NULL)
+	handle.task_manager = (struct task_info*) calloc(num_tasks, sizeof(struct task_info));
+	if (handle.task_manager == NULL)
 	{
 		LOG_ERROR("[compute_task] alloc task manager");
 		return errno;
@@ -476,7 +476,7 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
     for(size_t i = 0; i < num_tasks; i++)
 	{
 		handle.task_manager[i].task   = tasks + i * size_task;
-		handle.task_manager[i].ret    = ret + i * size_ret;
+		handle.task_manager[i].ret    = rets + i * size_ret;
 		handle.task_manager[i].status = NOT_RESOLVED; // paranoia
 	}
 
@@ -485,7 +485,7 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
 	handle.size_task      = size_task;
 	handle.size_ret       = size_ret;
 
-	init_task_computing_server(&handle);
+	init_cluster_server(&handle);
 
 	while(1);
 
@@ -502,7 +502,7 @@ static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char
     size_t num_ret_packet = *((size_t*)buff);
 	buff += sizeof(size_t);
 
-	memcpy((handle->task_manager[number].ret, buff, handle->size_ret);
+	memcpy(handle->task_manager[number].ret, buff, handle->size_ret);
 	handle->task_manager[number].status = COMPLETED;
 
 	(handle->client_conns[number].active_computations)--;
@@ -518,7 +518,7 @@ static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char
 
 	BUG_ON(i == handle->client_conns[number].num_tasks, "[push_ret_val] Can't find number of task in task list");
 
-	(handle->num_unresolved)--
+	(handle->num_unresolved)--;
 }
 
 
@@ -528,7 +528,7 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 	BUG_ON(buff == NULL, "[get_task] buff pointer is invalid");
 
 	size_t i = 0;
-	for(; i < handle->num_tasks, i++)
+	for(; i < handle->num_tasks; i++)
 	{
 		if (handle->task_manager[i].status == NOT_RESOLVED)
 		{
@@ -558,7 +558,7 @@ static void drop_unresolved(struct ClusterServerHandle* handle, size_t number)
 	for(int i = 0; i < handle->client_conns[number].num_tasks; i++)
 	{
 		if (handle->client_conns[number].task_list[i] > -1 && handle->client_conns[number].task_list[i] < handle->num_tasks)
-			handle->task_manager[handle->client_conns[number].task_list[i]] = NOT_RESOLVED;
+			handle->task_manager[handle->client_conns[number].task_list[i]].status = NOT_RESOLVED;
 		handle->client_conns[number].active_computations = 0;
 	}
 }
@@ -572,9 +572,9 @@ static void* server_eventloop(void* arg)
 	struct ClusterServerHandle* handle = arg;
 	BUG_ON(handle == NULL, "[server_eventloop] Nullptr argument");
 
-	static const int MAX_EVENTS       = 16;
-	static const int RECV_BUFFER_SIZE = handle->size_ret + sizeof(size_t) + sizeof(char);
-	static const int SEND_BUFFER_SIZE = handle->size_task + sizeof(size_t);
+	const int MAX_EVENTS       = 16;
+	int RECV_BUFFER_SIZE = handle->size_ret + sizeof(size_t) + sizeof(char);
+    int SEND_BUFFER_SIZE = handle->size_task + sizeof(size_t);
 
 	struct epoll_event pending_events[MAX_EVENTS];
 	while (1)

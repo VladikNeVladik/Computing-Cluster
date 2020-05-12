@@ -68,14 +68,14 @@ enum{
 	NOT_RESOLVED = 0,
 	RESOLVING,
 	COMPLETED
-}
+};
 
 struct task_info
 {
 	void* task;
 	void* ret;
 	int   status;
-}
+};
 
 //-------------------------------------
 // Initialization and deinitialization
@@ -88,6 +88,6 @@ void stop_cluster_server(struct ClusterServerHandle* handle);
 // Computation task management
 //-----------------------------
 
-void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
+int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
 
 #endif // COMPUTING_CLUSTER_SERVER_HPP_INCLUDED

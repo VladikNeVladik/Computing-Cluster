@@ -43,7 +43,7 @@ int main()
 	int ret = compute_task(num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
 	if (ret < 0)
 	{
-		LOG_ERROR("[compute_task] code error %p", ret);
+		LOG_ERROR("[compute_task] code error %d", ret);
 		exit(EXIT_FAILURE);
 	}
 

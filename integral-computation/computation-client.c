@@ -16,6 +16,8 @@ struct ret_data
 	double sum;
 };
 
+void* integral_thread(void* info);
+
 int main(int argc, char* argv[])
 {
 	// Set log file:
@@ -35,7 +37,7 @@ int main(int argc, char* argv[])
 	}
 
 	size_t num_threads = 5;
-	client_compute(num_threads, sizeof(struct task_data), sizeof(struct ret_data), integral_thread);
+	client_compute(num_threads, sizeof(struct task_data), sizeof(struct ret_data), NULL, integral_thread);
 
 	return EXIT_SUCCESS;
 }
@@ -100,5 +102,5 @@ void* integral_thread(void* info)
 		exit(EXIT_FAILURE);
 	}
 
-    return;
+    return NULL;
 }

@@ -22,6 +22,8 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <sys/sysinfo.h>
+#include <sys/eventfd.h>
 
 // Bool:
 typedef char bool;
@@ -54,7 +56,7 @@ struct ClusterClientHandle
 	// Computation task management:
 	size_t max_threads;
 	bool* computations_ready;
-	bool* empty_thead;
+	bool* empty_thread;
 	size_t in_process;
 
     // thread managment
@@ -71,12 +73,19 @@ struct ClusterClientHandle
 struct thread_info
 {
 	pthread_t thread_id;
-	size_t num_of_task
+	size_t num_of_task;
     int num_cpu;
     int line_size;
     int event_fd;
     void* data_pack;
 	void* ret_pack;
+};
+
+enum errors
+{
+    E_ERROR = -1,
+    E_CACHE_INFO = -2,
+    E_BADARGS = -3,
 };
 
 //-------------------------------------
@@ -90,6 +99,6 @@ void stop_cluster_client(struct ClusterClientHandle* handle);
 // Computation task management
 //-----------------------------
 
-void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size);
+void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*));
 
 #endif // COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED
