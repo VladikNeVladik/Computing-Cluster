@@ -63,7 +63,6 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 	}
 
 	// Disable the TIME-WAIT state of a socket:
-	int setsockopt_yes = 1;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
 		LOG_ERROR("[init_discovery_routine] Unable to set SO_REUSEADDR socket option");
@@ -244,7 +243,6 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 	}
 
 	// Disable the TIME-WAIT state of a socket:
-	int setsockopt_yes = 1;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set SO_REUSEADDR socket option");
