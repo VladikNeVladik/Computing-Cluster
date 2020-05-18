@@ -5,10 +5,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-const size_t num_tasks   = 128;
+const size_t num_tasks   = 5;
 const double start_point = 1.0;
 const double end_point   = 33.0;
-const double diff        = 0.000000001;
+const double diff        = 0.00000001;
 
 struct task_data
 {

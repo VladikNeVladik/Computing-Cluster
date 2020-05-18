@@ -427,12 +427,16 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 		.num_tasks            = 24
 	};
 
+////////////////////////////////////////////////////////////////////////////////
 	handle->client_conns[client_index].task_list = (int*) calloc(24, sizeof(int));
 	if (handle->client_conns[client_index].task_list == NULL)
 	{
 		LOG_ERROR("[accept_incoming_connection_request] alloc client task list mem error");
 		exit(EXIT_FAILURE);
 	}
+	for (int i = 0; i < 24; i++)
+		handle->client_conns[client_index].task_list[i] = -1;
+////////////////////////////////////////////////////////////////////////////////
 
 	// Add the socket to epoll:
 	epoll_data_t event_data =
@@ -500,6 +504,9 @@ static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char
 	BUG_ON(buff == NULL, "[push_ret_val] buff pointer is invalid");
 
     size_t num_ret_packet = *((size_t*)buff);
+
+	printf("%ld solved task\n", num_ret_packet);
+
 	buff += sizeof(size_t);
 
 	memcpy(handle->task_manager[number].ret, buff, handle->size_ret);
@@ -530,6 +537,7 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 	size_t i = 0;
 	for(; i < handle->num_tasks; i++)
 	{
+		//printf("%d\n", handle->task_manager[i].status);
 		if (handle->task_manager[i].status == NOT_RESOLVED)
 		{
 			handle->task_manager[i].status = RESOLVING;
@@ -540,10 +548,15 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 			int j = 0;
 			for(; j < handle->client_conns[number].num_tasks; j++)
 			{
-				if (handle->client_conns[number].task_list[i] == -1)
-					handle->client_conns[number].task_list[i] = i;
+				//printf("%d\n", handle->client_conns[number].task_list[j]);
+				if (handle->client_conns[number].task_list[j] == -1)
+				{
+					handle->client_conns[number].task_list[j] = i;
+					break;
+				}
 			}
 			BUG_ON(j == handle->client_conns[number].num_tasks, "[get_task] not enough space in task list");
+			break;
 		}
 	}
 	if (i == handle->num_tasks)

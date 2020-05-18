@@ -51,6 +51,8 @@ void* integral_thread(void* info)
 {
 	BUG_ON(info == NULL, "[integral_thread] bad argument");
 
+    LOG("[integral_thread] Thread is started");
+
 	cpu_set_t cpu;
 	pthread_t thread = pthread_self();
 	int num_cpu = ((struct thread_info*)info)->num_cpu;
@@ -93,6 +95,8 @@ void* integral_thread(void* info)
     ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(end) * delta / 2;
     ////////////////////////////////////////////////////////////////////////////
 
+	LOG("[integral_thread] Thread finished computations");
+
 	int sem_fd = ((struct thread_info*)info)->event_fd;
 	uint64_t val = 1u;
 	int ret = write(sem_fd, &val, sizeof(uint64_t));
@@ -101,6 +105,8 @@ void* integral_thread(void* info)
 		LOG_ERROR("[integral_thread] write fd error");
 		exit(EXIT_FAILURE);
 	}
+
+	LOG("[integral_thread] Thread returns");
 
     return NULL;
 }

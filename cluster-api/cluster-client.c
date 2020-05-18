@@ -416,7 +416,7 @@ static void init_task_computing_routine(struct ClusterClientHandle* handle)
 	for (size_t i = 0; i < handle->max_threads; ++i)
 	{
 		handle->computations_ready[i] = 0;
-		handle->empty_thread[i]        = 1;
+		handle->empty_thread[i]       = 1;
 	}
 
 	// Log:
@@ -529,6 +529,7 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 	BUG_ON(buff == NULL, "[start_thread] recv buff is NULL");
 
 	handle->thread_manager[num].num_of_task = *((size_t*)buff);
+
 	buff += sizeof(size_t);
     memcpy(handle->thread_manager[num].data_pack, buff, handle->task_size);
 
@@ -541,7 +542,9 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 		exit(EXIT_FAILURE);
 	}
 
-	ret = pthread_create(&(handle->thread_manager[num].thread_id), &attr, handle->thread_func, &(handle->thread_manager[num]));
+	printf("%ld stared task\n", handle->thread_manager[num].num_of_task);
+
+	ret = pthread_create(&(handle->thread_manager[num].thread_id), NULL, handle->thread_func, &(handle->thread_manager[num]));
 	if (ret < 0)
 	{
 		LOG_ERROR("[start_thread] Creating thread error");
@@ -560,6 +563,7 @@ static void prepare_ret_buff(struct ClusterClientHandle* handle, size_t num, cha
 	buff[0] = 1;
 	buff++;
 	(*(size_t*)buff) = handle->thread_manager[num].num_of_task;
+	printf("%ld prepared solved task\n", handle->thread_manager[num].num_of_task);
 	buff += sizeof(size_t);
     memcpy(buff, handle->thread_manager[num].ret_pack, handle->ret_size);
 
@@ -648,8 +652,9 @@ static void* client_eventloop(void* arg)
 					exit(EXIT_FAILURE);
 				}
 
-				for (size_t i = 0; i < handle->max_threads; ++i)
+				for (size_t i = 0; i < handle->max_threads; i++)
 				{
+					printf("%d threads is empty\n", handle->empty_thread[i]);
 					if (handle->empty_thread[i] == 1)
 					{
 						start_thread(handle, i, recv_buffer);
@@ -658,6 +663,8 @@ static void* client_eventloop(void* arg)
 				}
 
 				handle->server_conn.can_read = 0;
+				if (handle->in_process != handle->max_threads)
+					handle->server_conn.can_write = 1;
 
 				update_conn_management(handle);
 			}
