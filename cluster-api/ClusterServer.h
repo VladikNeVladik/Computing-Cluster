@@ -37,6 +37,10 @@ struct Connection
 
 	int* task_list;
 	size_t num_tasks;
+
+	// Recv buffer:
+	char*  recv_buffer;
+	size_t bytes_recieved;
 };
 
 struct ClusterServerHandle
@@ -55,7 +59,7 @@ struct ClusterServerHandle
 	size_t num_clients;
 	size_t max_clients;
 
-	// task management:
+	// Task management:
 	struct task_info* task_manager;
 	size_t num_unresolved;
 	size_t num_tasks;

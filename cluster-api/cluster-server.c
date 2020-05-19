@@ -209,6 +209,18 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 
 	for (size_t i = 0; i < handle->max_clients; ++i)
 	{
+		handle->client_conns[i].recv_buffer = (char*) malloc(handle->size_ret + sizeof(size_t) + sizeof(char));
+		if (handle->client_conns[i].recv_buffer == NULL)
+		{
+			LOG_ERROR("Unable to allocate memory for recv-buffer");
+			exit(EXIT_FAILURE);
+		}
+
+		handle->client_conns[i].bytes_recieved = 0;
+	}
+
+	for (size_t i = 0; i < handle->max_clients; ++i)
+	{
 		handle->client_conns[i].socket_fd = -1;
 	}
 
@@ -291,6 +303,8 @@ static void free_connection_management_routine(struct ClusterServerHandle* handl
 				LOG_ERROR("[free_connection_management_routine] Unable to close connection#%03zu", i);
 				exit(EXIT_FAILURE);
 			}
+
+			free(handle->client_conns[i].recv_buffer);
 		}
 	}
 
@@ -375,38 +389,38 @@ static void update_connection_management(struct ClusterServerHandle* handle, siz
 	    handle->client_conns[client_index].can_write ? "enabled" : "disabled");
 }
 
-static void delete_connection(struct ClusterServerHandle* handle, size_t client_index)
-{
-	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
+// static void delete_connection(struct ClusterServerHandle* handle, size_t client_index)
+// {
+// 	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
 
-	// Start accepting incoming connections:
-	if (handle->num_clients == handle->max_clients)
-	{
-		start_connection_management_routine(handle);
-	}
+// 	// Start accepting incoming connections:
+// 	if (handle->num_clients == handle->max_clients)
+// 	{
+// 		start_connection_management_routine(handle);
+// 	}
 
-	// Delete socket from epoll:
-	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->client_conns[client_index].socket_fd, NULL) == -1)
-	{
-		LOG_ERROR("[delete_connection] Unable to delete connection#%03zu from epoll", client_index);
-		exit(EXIT_FAILURE);
-	}
+// 	// Delete socket from epoll:
+// 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->client_conns[client_index].socket_fd, NULL) == -1)
+// 	{
+// 		LOG_ERROR("[delete_connection] Unable to delete connection#%03zu from epoll", client_index);
+// 		exit(EXIT_FAILURE);
+// 	}
 
-	if (close(handle->client_conns[client_index].socket_fd) == -1)
-	{
-		LOG_ERROR("[delete_connection] Unable to close socket");
-		exit(EXIT_FAILURE);
-	}
+// 	if (close(handle->client_conns[client_index].socket_fd) == -1)
+// 	{
+// 		LOG_ERROR("[delete_connection] Unable to close socket");
+// 		exit(EXIT_FAILURE);
+// 	}
 
-	handle->client_conns[client_index].socket_fd = -1;
+// 	handle->client_conns[client_index].socket_fd = -1;
 
-	free(handle->client_conns[client_index].task_list);
+// 	free(handle->client_conns[client_index].task_list);
 
-	handle->num_clients -= 1;
+// 	handle->num_clients -= 1;
 
-	// Log:
-	LOG("Deleted connection#%03zu", client_index);
-}
+// 	// Log:
+// 	LOG("Deleted connection#%03zu", client_index);
+// }
 
 const size_t TASK_LIST_SIZE = 24;
 
@@ -444,6 +458,7 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 
 	BUG_ON(client_index == -1, "[accept_incoming_connection_request] No free cell in the connection array");
 
+	char* already_allocated_buffer = handle->client_conns[client_index].recv_buffer;
 	// Initialise Connection Entry:
 	handle->client_conns[client_index] = (struct Connection)
 	{
@@ -453,7 +468,9 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 		.want_task            = 0,
 		.returned_task        = 1,
 		.active_computations  = 0,
-		.num_tasks            = TASK_LIST_SIZE
+		.num_tasks            = TASK_LIST_SIZE,
+		.recv_buffer          = already_allocated_buffer,
+		.bytes_recieved       = 0
 	};
 
 	handle->client_conns[client_index].task_list = (int*) calloc(TASK_LIST_SIZE, sizeof(int));
@@ -597,17 +614,17 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 	return i;
 }
 
-static void drop_unresolved(struct ClusterServerHandle* handle, size_t number)
-{
-	BUG_ON(handle == NULL, "[get_task] in pointer is invalid");
+// static void drop_unresolved(struct ClusterServerHandle* handle, size_t number)
+// {
+// 	BUG_ON(handle == NULL, "[get_task] in pointer is invalid");
 
-	for(int i = 0; i < handle->client_conns[number].num_tasks; i++)
-	{
-		if (handle->client_conns[number].task_list[i] > -1 && handle->client_conns[number].task_list[i] < handle->num_tasks)
-			handle->task_manager[handle->client_conns[number].task_list[i]].status = NOT_RESOLVED;
-		handle->client_conns[number].active_computations = 0;
-	}
-}
+// 	for(int i = 0; i < handle->client_conns[number].num_tasks; i++)
+// 	{
+// 		if (handle->client_conns[number].task_list[i] > -1 && handle->client_conns[number].task_list[i] < handle->num_tasks)
+// 			handle->task_manager[handle->client_conns[number].task_list[i]].status = NOT_RESOLVED;
+// 		handle->client_conns[number].active_computations = 0;
+// 	}
+// }
 
 //------------------
 // Server Eventloop
@@ -654,35 +671,49 @@ static void* server_eventloop(void* arg)
 
 				if (pending_events[ev].events & EPOLLHUP)
 				{
-					LOG("Connection#%03zu hangup detected", i);
-
-					drop_unresolved(handle, i);
-					delete_connection(handle, i);
-					continue;
+					LOG_ERROR("Connection#%03zu hangup detected", i);
+					exit(EXIT_FAILURE);
+					
+					// drop_unresolved(handle, i);
+					// delete_connection(handle, i);
+					// continue;
 				}
 
 				if (pending_events[ev].events & EPOLLIN)
 				{
 					LOG("Recieved packet on connection#%03zu", i);
 
-					char recv_buffer[RECV_BUFFER_SIZE];
-					int bytes_read = recv(handle->client_conns[i].socket_fd, recv_buffer, RECV_BUFFER_SIZE, MSG_WAITALL);
-					if (bytes_read == -1 || bytes_read < RECV_BUFFER_SIZE)
-					{
-						LOG("Dropping connection#%03zu because of recieve error", i);
+					// Manage recieve buffer:
+					char* buf_ptr = handle->client_conns[i].recv_buffer + handle->client_conns[i].bytes_recieved;
+					size_t bytes_to_read = RECV_BUFFER_SIZE - handle->client_conns[i].bytes_recieved;
 
-						drop_unresolved(handle, i);
-						delete_connection(handle, i);
-						continue;
+					int bytes_read = recv(handle->client_conns[i].socket_fd, buf_ptr, bytes_to_read, MSG_WAITALL);
+					if (bytes_read == -1)
+					{
+						LOG_ERROR("[server_eventloop] Unable to recv()");
+						exit(EXIT_FAILURE);
+
+						// LOG("Dropping connection#%03zu because of recieve error", i);
+
+						// drop_unresolved(handle, i);
+						// delete_connection(handle, i);
+						// continue;
 					}
 
-					char control_byte = recv_buffer[0];
+					handle->client_conns[i].bytes_recieved += bytes_read;
+
+					// Continue recieving if the request hasn't been read
+					if (handle->client_conns[i].bytes_recieved < RECV_BUFFER_SIZE) continue;
+
+					handle->client_conns[i].bytes_recieved = 0;
+
+					char control_byte = handle->client_conns[i].recv_buffer[0];
 
 					if (control_byte == 0)
 						handle->client_conns[i].want_task = 1;
 
 					if (control_byte == 1)
-						push_ret_val(handle, i, recv_buffer + 1);
+						push_ret_val(handle, i, handle->client_conns[i].recv_buffer + 1);
 
 					if (handle->client_conns[i].active_computations != handle->client_conns[i].num_tasks && handle->client_conns[i].want_task == 1)
 						handle->client_conns[i].can_write = 1;
@@ -700,11 +731,14 @@ static void* server_eventloop(void* arg)
 						int bytes_written = send(handle->client_conns[i].socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 						if (bytes_written != SEND_BUFFER_SIZE)
 						{
-							LOG("Dropping connection#%03zu because of send error", i);
+							LOG_ERROR("[server_eventloop] Unable to send()");
+							exit(EXIT_FAILURE);
 
-							drop_unresolved(handle, i);
-							delete_connection(handle, i);
-							continue;
+							// LOG("Dropping connection#%03zu because of send error", i);
+
+							// drop_unresolved(handle, i);
+							// delete_connection(handle, i);
+							// continue;
 						}
 					}
 
@@ -715,6 +749,8 @@ static void* server_eventloop(void* arg)
 				}
 			}
 		}
+
+		LOG("Unresolved tasks left: %zu", handle->num_unresolved);
 		if (handle->num_unresolved == 0)
 			break;
 	}

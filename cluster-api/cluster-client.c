@@ -266,7 +266,7 @@ static void discover_server(struct ClusterClientHandle* handle)
 	// Log discovery:
 	char server_host[32];
 	char server_port[32];
-	if (getnameinfo((struct sockaddr*) &handle->server_addr, sizeof(handle->server_addr),
+	if (getnameinfo((struct sockaddr*) &peer_addr, sizeof(peer_addr),
 		server_host, 32, server_port, 32, NI_NUMERICHOST|NI_NUMERICSERV) != 0)
 	{
 		LOG_ERROR("[discover_server] Unable to call getnameinfo()");

@@ -12,7 +12,7 @@
 //-------------------
 
 #define DISCOVERY_PORT 9787
-#define DISCOVERY_REPEAT_TIME 5 // sec
+#define DISCOVERY_REPEAT_TIME 1 // sec
 #define DISCOVERY_DATAGRAM_SIZE 16
 
 //-----------------
