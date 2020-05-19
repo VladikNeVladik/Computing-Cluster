@@ -498,6 +498,15 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 		exit(EXIT_FAILURE);
 	}
 
+	handle.recv_buff = (char*) calloc(task_size + sizeof(size_t), sizeof(char));
+	if (handle.recv_buff == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc recv buffer");
+		exit(EXIT_FAILURE);
+	}
+	handle.bytes_recv = 0;
+
+
 	for (int i = 0; i < num_threads; i++)
 	{
 		handle.thread_manager[i].num_cpu     = i % cpu_size;
@@ -516,6 +525,7 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 	free(handle.task_buffer);
 	free(handle.ret_buffer);
 	free(handle.thread_manager);
+	free(handle.recv_buff);
 }
 
 static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
@@ -524,6 +534,7 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 	BUG_ON(buff == NULL, "[start_thread] recv buff is NULL");
 
 	handle->thread_manager[num].num_of_task = *((size_t*)buff);
+	LOG("[in_handle] Recv packet # %zu", handle->thread_manager[num].num_of_task);
 
 	buff += sizeof(size_t);
     memcpy(handle->thread_manager[num].data_pack, buff, handle->task_size);
@@ -596,19 +607,23 @@ static void in_handler(struct ClusterClientHandle* handle)
 	BUG_ON(handle == NULL, "[in_handler] handle is NULL");
 
 	size_t RECV_BUFFER_SIZE = sizeof(size_t) + handle->task_size;
-	char recv_buffer[RECV_BUFFER_SIZE];
-	int bytes_read = recv(handle->server_conn.socket_fd, recv_buffer, RECV_BUFFER_SIZE, 0);
-	if (bytes_read == -1 || bytes_read < RECV_BUFFER_SIZE)
+
+	int bytes_read = recv(handle->server_conn.socket_fd, handle->recv_buff + handle->bytes_recv, RECV_BUFFER_SIZE - handle->bytes_recv, 0);
+	if (bytes_read == -1)
 	{
 		LOG_ERROR("[in_handler] Unable to recieve packet from server");
 		exit(EXIT_FAILURE);
 	}
+	handle->bytes_recv += bytes_read;
+	if (handle->bytes_recv < RECV_BUFFER_SIZE)
+		return;
+	handle->bytes_recv = 0;
 
 	for (size_t i = 0; i < handle->max_threads; i++)
 	{
 		if (handle->empty_thread[i] == 1)
 		{
-			start_thread(handle, i, recv_buffer);
+			start_thread(handle, i, handle->recv_buff);
 			break;
 		}
 	}
