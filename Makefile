@@ -2,7 +2,7 @@
 # COMPILER FLAGS #
 #================#
 
-CCFLAGS += -std=c11 -Werror -Wall -pthread
+CCFLAGS += -std=c11 -Werror -Wall -pthread -ggdb
 
 #==============#
 # INSTALLATION #
@@ -49,8 +49,8 @@ run_server : bin/computation-server.out
 	@ bin/computation-server.out
 	@ printf "\033[1;33mServer Finished!\033[0m\n"
 
-run_client : bin/computation-client.out
+run_client : bin/computation-client.out 
 	@ printf "\033[1;33mClient Running!\033[0m\n"
-	@ bin/computation-client.out
+	@ bin/computation-client.out 5
 	@ printf "\033[1;33mClient Finished!\033[0m\n"
 

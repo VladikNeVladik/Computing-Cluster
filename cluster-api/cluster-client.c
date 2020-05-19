@@ -44,7 +44,7 @@
 #include "Config.h"
 
 //-----------------
-// Server Tracking 
+// Server Tracking
 //-----------------
 
 static void init_server_tracking_routine(struct ClusterClientHandle* handle)
@@ -96,7 +96,7 @@ static void init_server_tracking_routine(struct ClusterClientHandle* handle)
 
 	struct itimerspec timer_config =
 	{
-		.it_interval = {0, 0}, 
+		.it_interval = {0, 0},
 		.it_value    = {0, 0}
 	};
 	if (timerfd_settime(timer_fd, 0, &timer_config, NULL) == -1)
@@ -147,11 +147,11 @@ static void start_server_tracking_routine(struct ClusterClientHandle* handle)
 	}
 
 	// Add the server tracking socket to epoll:
-	epoll_data_t event_data = 
+	epoll_data_t event_data =
 	{
 		.fd = handle->server_tracking_socket_fd
 	};
-	struct epoll_event event_config = 
+	struct epoll_event event_config =
 	{
 		.events = EPOLLIN,
 		.data   = event_data
@@ -175,7 +175,7 @@ static void start_server_tracking_routine(struct ClusterClientHandle* handle)
 	// Arm the timer:
 	struct itimerspec timer_config =
 	{
-		.it_interval = {                                         0, 0}, 
+		.it_interval = {                                         0, 0},
 		.it_value    = {TIMEOUT_NO_DISCOVERY_DATAGRAMS_FROM_SERVER, 0}
 	};
 	if (timerfd_settime(handle->server_tracking_timeout_fd, 0, &timer_config, NULL) == -1)
@@ -227,7 +227,7 @@ static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
 }
 
 //-------------------
-// Discovery process 
+// Discovery process
 //-------------------
 
 static void discover_server(struct ClusterClientHandle* handle)
@@ -277,7 +277,7 @@ static void discover_server(struct ClusterClientHandle* handle)
 }
 
 //-------------------------------
-// Connection Management Routine 
+// Connection Management Routine
 //-------------------------------
 
 static void init_connection_management_routine(struct ClusterClientHandle* handle)
@@ -333,8 +333,6 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		exit(EXIT_FAILURE);
 	}
 
-	printf("CONNECT\n");
-
 	// Make socket non-blocking:
 	if (fcntl(sock_fd, F_SETFD, O_NONBLOCK) == -1)
 	{
@@ -347,11 +345,11 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	handle->server_conn.can_write = 1;
 
 	// Add socket to epoll:
-	epoll_data_t event_data = 
+	epoll_data_t event_data =
 	{
 		.fd = handle->server_conn.socket_fd
 	};
-	struct epoll_event event_config = 
+	struct epoll_event event_config =
 	{
 		.events = EPOLLIN|EPOLLOUT|EPOLLHUP,
 		.data   = event_data
@@ -371,11 +369,11 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 	BUG_ON(handle == NULL, "[start_conn_in_management] Nullptr argument");
 
 	// Add socket to epoll:
-	epoll_data_t event_data = 
+	epoll_data_t event_data =
 	{
 		.fd = handle->server_conn.socket_fd
 	};
-	struct epoll_event event_config = 
+	struct epoll_event event_config =
 	{
 		.events = (handle->server_conn.can_read  ? EPOLLIN  : 0) |
 		          (handle->server_conn.can_write ? EPOLLOUT : 0) | EPOLLHUP,
@@ -393,7 +391,7 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 }
 
 //-----------------------------
-// Computation task management 
+// Computation task management
 //-----------------------------
 
 static void init_task_computing_routine(struct ClusterClientHandle* handle)
@@ -406,10 +404,17 @@ static void init_task_computing_routine(struct ClusterClientHandle* handle)
 		LOG_ERROR("[init_task_computing_routine] Unable to allocate memory");
 		exit(EXIT_FAILURE);
 	}
+	handle->empty_thread = (bool*) calloc(handle->max_threads, sizeof(*handle->empty_thread));
+	if (handle->empty_thread == NULL)
+	{
+		LOG_ERROR("[init_task_computing_routine] Unable to allocate memory");
+		exit(EXIT_FAILURE);
+	}
 
 	for (size_t i = 0; i < handle->max_threads; ++i)
 	{
 		handle->computations_ready[i] = 0;
+		handle->empty_thread[i]       = 1;
 	}
 
 	// Log:
@@ -421,6 +426,7 @@ static void free_task_computing_routine(struct ClusterClientHandle* handle)
 	BUG_ON(handle == NULL, "[free_task_computing_routine] Nullptr argument");
 
 	free(handle->computations_ready);
+	free(handle->empty_thread);
 
 	// Log:
 	LOG("[CLUSTER-CLIENT] Task computing routine resources freed");
@@ -433,23 +439,252 @@ static void free_task_computing_routine(struct ClusterClientHandle* handle)
 // Task Management Routine
 //-------------------------
 
-void client_compute(struct ClusterClientHandle* handle, size_t num_threads, size_t task_size, size_t ret_size)
+static int cache_line_size()
 {
-	
+    errno = 0;
+    FILE* cache_info = fopen("/sys/bus/cpu/devices/cpu0/cache/index0/coherency_line_size", "r");
+    if (cache_info == NULL)
+    {
+        perror("Can't open /sys/bus/cpu/devices/cpu0/cache/index0/coherency_line_size\n");
+        return E_ERROR;
+    }
+
+    int line_size = 0;
+    int ret = fscanf(cache_info, "%d", &line_size);
+    if (ret != 1)
+    {
+        perror("Can't scan coherency_line_size\n");
+        return E_ERROR;
+    }
+
+    return line_size;
+}
+
+void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*))
+{
+	BUG_ON(num_threads == 0, "[client_compute] number of threads is zero");
+	BUG_ON(task_size == 0, "[client_compute] task size is zero");
+	BUG_ON(ret_size == 0, "[client_compute] ret size is zero");
+	BUG_ON(thread_func == NULL, "[client_compute] Nullptr handle");
+
+	struct ClusterClientHandle handle;
+
+	handle.max_threads     = num_threads;
+	handle.local_discovery = (master_host == NULL);
+	handle.server_hostname = master_host;
+	handle.ret_size        = ret_size;
+	handle.task_size       = task_size;
+	handle.thread_func     = thread_func;
+	handle.in_process      = 0;
+
+	handle.thread_manager = (struct thread_info*) calloc(num_threads, sizeof(struct thread_info));
+	if (handle.thread_manager == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc info mem");
+		exit(EXIT_FAILURE);
+	}
+
+	int cache = cache_line_size();
+	int cpu_size = get_nprocs();
+
+	handle.task_buffer = malloc(num_threads * (task_size + cpu_size));
+	if (handle.task_buffer == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc task buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	handle.ret_buffer = malloc(num_threads * (ret_size + cpu_size));
+	if (handle.ret_buffer == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc ret buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < num_threads; i++)
+	{
+		handle.thread_manager[i].num_cpu     = i % cpu_size;
+		handle.thread_manager[i].num_of_task = 0;
+		handle.thread_manager[i].line_size   = cache;
+		handle.thread_manager[i].data_pack   = handle.task_buffer + i * (task_size + cpu_size);
+		handle.thread_manager[i].ret_pack    = handle.ret_buffer + i * (ret_size + cpu_size);
+	}
+
+	init_cluster_client(&handle, num_threads, NULL);
+
+	//while(1);
+
+	stop_cluster_client(&handle);
+
+	free(handle.task_buffer);
+	free(handle.ret_buffer);
+	free(handle.thread_manager);
+}
+
+static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
+{
+	BUG_ON(handle == NULL, "[start_thread] handle is NULL");
+	BUG_ON(buff == NULL, "[start_thread] recv buff is NULL");
+
+	handle->thread_manager[num].num_of_task = *((size_t*)buff);
+
+	buff += sizeof(size_t);
+    memcpy(handle->thread_manager[num].data_pack, buff, handle->task_size);
+
+    pthread_attr_t attr;
+
+	int ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	if (ret < 0)
+	{
+		LOG_ERROR("[start thread] detache state error");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = pthread_create(&(handle->thread_manager[num].thread_id), NULL, handle->thread_func, &(handle->thread_manager[num]));
+	if (ret < 0)
+	{
+		LOG_ERROR("[start_thread] Creating thread error");
+		exit(EXIT_FAILURE);
+	}
+
+    handle->in_process++;
+	handle->empty_thread[num] = 0;
+}
+
+static void prepare_ret_buff(struct ClusterClientHandle* handle, size_t num, char* buff)
+{
+	BUG_ON(handle == NULL, "[prepare_ret_buff] handle is NULL");
+	BUG_ON(buff == NULL, "[prepare_ret_buff] recv buff is NULL");
+
+	buff[0] = 1;
+	buff++;
+	(*(size_t*)buff) = handle->thread_manager[num].num_of_task;
+	LOG("[prepare_ret_buff] Send %ld prepared solved task", handle->thread_manager[num].num_of_task);
+	buff += sizeof(size_t);
+
+    memcpy(buff, handle->thread_manager[num].ret_pack, handle->ret_size);
+
+	handle->in_process--;
+	handle->empty_thread[num] = 1;
+}
+
+static void eventfd_handler(struct ClusterClientHandle* handle, struct epoll_event* pending_events)
+{
+	BUG_ON(handle == NULL, "[eventfd_handler] handle is NULL");
+	BUG_ON(pending_events == NULL, "[eventfd_handler] Bad arg - pending_events");
+
+	for(int j = 0; j < handle->max_threads; j++)
+	{
+		if (pending_events->data.fd == handle->thread_manager[j].event_fd && pending_events->events & EPOLLIN)
+		{
+			handle->computations_ready[j] = 1;
+
+			uint64_t out = 0;
+			int ret = read(handle->thread_manager[j].event_fd, &out, sizeof(uint64_t));
+			if (ret < 0)
+			{
+				LOG_ERROR("[client_eventloop] Unable to reduce eventfd");
+				exit(EXIT_FAILURE);
+			}
+
+			handle->server_conn.can_write = 1;
+			update_conn_management(handle);
+		}
+	}
+}
+
+static void in_handler(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[in_handler] handle is NULL");
+
+	size_t RECV_BUFFER_SIZE = sizeof(size_t) + handle->task_size;
+	char recv_buffer[RECV_BUFFER_SIZE];
+	int bytes_read = recv(handle->server_conn.socket_fd, recv_buffer, RECV_BUFFER_SIZE, 0);
+	if (bytes_read == -1 || bytes_read < RECV_BUFFER_SIZE)
+	{
+		LOG_ERROR("[client_eventloop] Unable to recieve packet from server");
+		exit(EXIT_FAILURE);
+	}
+
+	for (size_t i = 0; i < handle->max_threads; i++)
+	{
+		if (handle->empty_thread[i] == 1)
+		{
+			start_thread(handle, i, recv_buffer);
+			break;
+		}
+	}
+
+	handle->server_conn.can_read = 1;
+	if (handle->in_process != handle->max_threads)
+		handle->server_conn.can_write = 1;
+
+	update_conn_management(handle);
+}
+
+static void out_handler(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[out_handler] handle is NULL");
+
+	size_t SEND_BUFFER_SIZE = sizeof(size_t) + 1 + handle->ret_size;
+
+	for(size_t i = 0; i < handle->max_threads; i++)
+	{
+		if (handle->computations_ready[i] == 1)
+		{
+			char send_buffer[SEND_BUFFER_SIZE];
+			prepare_ret_buff(handle, i, send_buffer);
+
+			int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
+			if (bytes_written != SEND_BUFFER_SIZE)
+			{
+				LOG_ERROR("[client_eventloop] Unable to send packet to server");
+				exit(EXIT_FAILURE);
+			}
+
+			handle->computations_ready[i] = 0;
+
+			LOG("[CLUSTER-CLIENT] Sent packet to server");
+			handle->server_conn.can_read = 1;
+			handle->server_conn.can_write = 1;
+			update_conn_management(handle);
+			return;
+		}
+	}
+
+	for (size_t i = 0; i < handle->max_threads; ++i)
+	{
+		if (handle->empty_thread[i] == 1)
+		{
+			char send_buffer[SEND_BUFFER_SIZE];
+			send_buffer[0] = 0;
+
+			int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
+			if (bytes_written != SEND_BUFFER_SIZE)
+			{
+				LOG_ERROR("[client_eventloop] Unable to request to server");
+				exit(EXIT_FAILURE);
+			}
+
+			LOG("[CLUSTER-CLIENT] Sent request to server");
+			handle->server_conn.can_read = 1;
+			handle->server_conn.can_write = 0;
+			update_conn_management(handle);
+			return;
+		}
+	}
 }
 
 //------------------
-// Client Eventloop 
+// Client Eventloop
 //------------------
 
 static void* client_eventloop(void* arg)
 {
-	static const int MAX_EVENTS       = 16;
-	static const int RECV_BUFFER_SIZE = 16;
-	static const int SEND_BUFFER_SIZE = 16;
-
 	struct ClusterClientHandle* handle = arg;
 	BUG_ON(handle == NULL, "[client_eventloop] Nullptr argument");
+
+	static const int MAX_EVENTS       = 16;
 
 	struct epoll_event pending_events[MAX_EVENTS];
 	while (1)
@@ -479,73 +714,29 @@ static void* client_eventloop(void* arg)
 			// Handle intended connection shutdown or connection timeout:
 			if (pending_events[ev].data.fd == handle->server_conn.socket_fd && pending_events[ev].events & EPOLLHUP)
 			{
-				LOG("[CLUSTER-CLIENT] Connection shutdown observed. Quitting");
-				exit(EXIT_FAILURE);
+				if (handle->in_process != 0)
+				{
+					LOG("[CLUSTER-CLIENT] Connection shutdown observed. Quitting");
+					exit(EXIT_FAILURE);
+				}
+
+				return NULL;
 			}
+
+			// Handle event_fd - finish of the thread
+			eventfd_handler(handle, pending_events + ev);
 
 			// Handle connection read:
 			if (pending_events[ev].data.fd == handle->server_conn.socket_fd && pending_events[ev].events & EPOLLIN)
 			{
 				LOG("[CLUSTER-CLIENT] Packet from server arrived");
-
-				char recv_buffer[RECV_BUFFER_SIZE];
-				int bytes_read = recv(handle->server_conn.socket_fd, recv_buffer, RECV_BUFFER_SIZE, 0);
-				if (bytes_read == -1 || bytes_read == 0)
-				{
-					LOG_ERROR("[client_eventloop] Unable to recieve packet from server");
-					exit(EXIT_FAILURE);
-				}
-
-				for (size_t i = 0; i < handle->max_threads; ++i)
-				{
-					if (handle->computations_ready[i] == 0)
-					{
-						handle->computations_ready[i] = 1;
-						break;
-					}
-				}
-
-				handle->server_conn.can_write = 1;
-
-				handle->server_conn.can_read = 0;
-				for (size_t i = 0; i < handle->max_threads; ++i)
-				{
-					if (handle->computations_ready[i] == 1)
-					{
-						handle->server_conn.can_read = 1;
-					}
-				}
-
-				update_conn_management(handle);
+				in_handler(handle);
 			}
 
 			// Handle connection write:
 			if (pending_events[ev].data.fd == handle->server_conn.socket_fd && pending_events[ev].events & EPOLLOUT)
 			{
-				sleep(1);
-
-				for (size_t i = 0; i < handle->max_threads; ++i)
-				{
-					if (handle->computations_ready[i] == 1)
-					{
-						char send_buffer[SEND_BUFFER_SIZE];
-						int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
-						if (bytes_written != SEND_BUFFER_SIZE)
-						{
-							LOG_ERROR("[client_eventloop] Unable to send packet to server");
-							exit(EXIT_FAILURE);
-						}
-
-						handle->computations_ready[i] = 0;
-
-						LOG("[CLUSTER-CLIENT] Sent packet to server");
-					}
-				}
-
-				handle->server_conn.can_read = 1;
-				handle->server_conn.can_write = 0;
-	
-				update_conn_management(handle);
+				out_handler(handle);
 			}
 		}
 	}
@@ -554,18 +745,59 @@ static void* client_eventloop(void* arg)
 }
 
 
+static void start_eventfd_managment_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[start_eventfd_managment_routine] Nullptr argument");
+
+	for(int i = 0; i < handle->max_threads; i++)
+	{
+		handle->thread_manager[i].event_fd  = eventfd(0, EFD_NONBLOCK);
+		if (handle->thread_manager[i].event_fd < 0)
+		{
+			LOG_ERROR("[init_cluster_client] init eventfd");
+			exit(EXIT_FAILURE);
+		}
+
+		epoll_data_t event_data =
+		{
+			.fd = handle->thread_manager[i].event_fd
+		};
+		struct epoll_event event_config =
+		{
+			.events = EPOLLIN|EPOLLHUP,
+			.data   = event_data
+		};
+		if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->thread_manager[i].event_fd, &event_config) == -1)
+		{
+			LOG_ERROR("[start_eventfd_managment_routine] eventctl add ");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+}
+
+static void free_eventfd_managment_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[free_eventfd_managment_routine] Nullptr argument");
+
+	for(int i = 0; i < handle->max_threads; i++)
+	{
+		int ret = close(handle->thread_manager[i].event_fd);
+		if (ret < 0)
+		{
+			LOG_ERROR("[free_eventfd_managment_routine] eventfd close");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 //-------------------------------------
-// Initialization and deinitialization 
+// Initialization and deinitialization
 //-------------------------------------
 
 void init_cluster_client(struct ClusterClientHandle* handle, size_t max_threads, const char* master_host)
 {
 	BUG_ON(handle == NULL, "[init_cluster_client] Nullptr argument");
-
-	// Save desired client configuration:
-	handle->max_threads = max_threads;
-	handle->local_discovery = (master_host == NULL);
-	handle->server_hostname = master_host;
 
 	// Init subroutines:
 	init_server_tracking_routine(handle);
@@ -589,6 +821,9 @@ void init_cluster_client(struct ClusterClientHandle* handle, size_t max_threads,
 		exit(EXIT_FAILURE);
 	}
 
+	// Iniciate fd for ret_value
+	start_eventfd_managment_routine(handle);
+
 	// Perform discovery:
 	discover_server(handle);
 	start_server_tracking_routine(handle);
@@ -605,14 +840,14 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 	BUG_ON(handle == NULL, "[stop_cluster_client] Nullptr argument");
 
 	// Stop eventloop:
-	int err = pthread_cancel(handle->eventloop_thr_id);
+	/*int err = pthread_cancel(handle->eventloop_thr_id);
 	if (err != 0)
 	{
 		LOG_ERROR("[stop_cluster_client] pthread_cancel() failed with error %d", err);
 		exit(EXIT_FAILURE);
-	}
+	}*/
 
-	err = pthread_join(handle->eventloop_thr_id, NULL);
+	int err = pthread_join(handle->eventloop_thr_id, NULL);
 	if (err != 0)
 	{
 		LOG_ERROR("[stop_cluster_client] pthread_join() failed with error %d", err);
@@ -629,6 +864,7 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 	free_server_tracking_routine      (handle);
 	free_task_computing_routine       (handle);
 	free_connection_management_routine(handle);
+	free_eventfd_managment_routine    (handle);
 
 	// Log:
 	LOG("[CLUSTER-CLIENT] Cluster-client stopped");

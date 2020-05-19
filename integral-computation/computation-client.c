@@ -3,6 +3,9 @@
 #include "../cluster-api/ClusterClient.h"
 
 #include <stdlib.h>
+#include <errno.h>
+#include <limits.h>
+
 
 struct task_data
 {
@@ -16,35 +19,60 @@ struct ret_data
 	double sum;
 };
 
+void* integral_thread(void* info);
+long int give_num(const char* str_num);
+
 int main(int argc, char* argv[])
 {
 	// Set log file:
 	set_log_file("log/CLIENT-LOG.log");
 
-	// if (argc != 2)
-	// {
-	// 	LOG_ERROR("[client] num of arguments != 2");
-	// 	exit(EXIT_FAILURE);
-	// }
+	if (argc != 2)
+	{
+		LOG_ERROR("[client] num of arguments != 2");
+		exit(EXIT_FAILURE);
+	}
 
-	long int num_thr = 5; //give_num(argv[1]);
+	long int num_thr = give_num(argv[1]);
 	if (num_thr <= 0)
 	{
-	  LOG_ERROR("[client] error number of threads");
-	  exit(EXIT_FAILURE);
+		LOG_ERROR("[client] error number of threads");
+	 	exit(EXIT_FAILURE);
 	}
-  
-	struct ClusterClientHandle client_handle;
-	init_cluster_client(&client_handle, 10, NULL);
 
-	size_t num_threads = 5;
-	client_compute(&client_handle, num_threads, sizeof(struct task_data), sizeof(struct ret_data));
-
-	while (1);
-
-	stop_cluster_client(&client_handle);
+	client_compute(num_thr, sizeof(struct task_data), sizeof(struct ret_data), NULL, integral_thread);
 
 	return EXIT_SUCCESS;
+}
+
+long int give_num(const char* str_num)
+{
+    long int in_num = 0;
+    char *end_string;
+
+    errno = 0;
+    in_num = strtoll(str_num, &end_string, 10);
+    if ((errno != 0 && in_num == 0) || (errno == ERANGE && (in_num == LLONG_MAX || in_num == LLONG_MIN))) {
+        printf("Bad string");
+        return -2;
+    }
+
+    if (str_num == end_string) {
+        printf("No number");
+        return -3;
+    }
+
+    if (*end_string != '\0') {
+        printf("Garbage after number");
+        return -4;
+    }
+
+    if (in_num < 0) {
+        printf("i want unsigned num");
+        return -5;
+    }
+
+    return in_num;
 }
 
 double func(double x)
@@ -89,13 +117,13 @@ void* integral_thread(void* info)
 		exit(EXIT_FAILURE);
 	}
 
-	out->sum = 0.0;
+	((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum = 0.0;
 
     for (; x < end; x += delta)// Check x and delta in asm version
-        out->sum += func(x) * delta;
+        ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(x) * delta;
 
-    out->sum += func(start) * delta / 2;
-    out->sum += func(end) * delta / 2;
+    ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(start) * delta / 2;
+    ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(end) * delta / 2;
     ////////////////////////////////////////////////////////////////////////////
 
 	int sem_fd = ((struct thread_info*)info)->event_fd;
@@ -107,5 +135,5 @@ void* integral_thread(void* info)
 		exit(EXIT_FAILURE);
 	}
 
-    return out;
+    return NULL;
 }
