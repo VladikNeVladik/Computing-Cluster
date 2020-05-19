@@ -5,10 +5,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-const size_t num_tasks   = 128;
+const size_t num_tasks   = 48;
 const double start_point = 1.0;
-const double end_point   = 33.0;
-const double diff        = 0.000000001;
+const double end_point   = 101.0;
+const double diff        = 0.00000001;
 
 struct task_data
 {
@@ -40,27 +40,20 @@ int main()
 		task_buff[i].step  = diff;
 	}
 
-	struct ClusterServerHandle server_handle;
-	init_cluster_server(&server_handle);
-
-	void* ret = compute_task(&server_handle, num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
+	int ret = compute_task(num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
 	if (ret < 0)
 	{
-		LOG_ERROR("[compute_task] code error %p", ret);
+		LOG_ERROR("[compute_task] code error %d", ret);
 		exit(EXIT_FAILURE);
 	}
-	
-	while (1);
 
 	free(task_buff);
-
-	stop_cluster_server(&server_handle);
 
 	double result = 0.0;
 	for (size_t i = 0; i < num_tasks; i++)
 	{
 		// HOT FIX !!!!
-		BUG_ON(ret_buff[i].ret_val == 0.0/*!!!! NAN !!!!*/, "[return loop] ret_val of task is NAN");
+		BUG_ON(ret_buff[i].ret_val != ret_buff[i].ret_val/*!!!! NAN !!!!*/, "[return loop] ret_val of task is NAN");
 		result += ret_buff[i].ret_val;
 	}
 	free(ret_buff);
