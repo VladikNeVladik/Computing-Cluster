@@ -53,7 +53,7 @@ static void init_server_tracking_routine(struct ClusterClientHandle* handle)
 
 	if (!handle->local_discovery)
 	{
-		LOG("[CLUSTER-CLIENT] Server tracking routine initialized (distant discovery)");
+		LOG("Server tracking routine initialized (distant discovery)");
 		return;
 	}
 
@@ -108,7 +108,7 @@ static void init_server_tracking_routine(struct ClusterClientHandle* handle)
 	handle->server_tracking_timeout_fd = timer_fd;
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Server tracking routine initialized");
+	LOG("Server tracking routine initialized");
 }
 
 static void free_server_tracking_routine(struct ClusterClientHandle* handle)
@@ -131,7 +131,7 @@ static void free_server_tracking_routine(struct ClusterClientHandle* handle)
 	handle->server_tracking_timeout_fd = -1;
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Server tracking routine resources freed");
+	LOG("Server tracking routine resources freed");
 }
 
 static void start_server_tracking_routine(struct ClusterClientHandle* handle)
@@ -141,7 +141,7 @@ static void start_server_tracking_routine(struct ClusterClientHandle* handle)
 	if (!handle->local_discovery)
 	{
 		// Log:
-		LOG("[CLUSTER-CLIENT] Server tracking routine running (distant discovery mode)");
+		LOG("Server tracking routine running (distant discovery mode)");
 
 		return;
 	}
@@ -185,7 +185,7 @@ static void start_server_tracking_routine(struct ClusterClientHandle* handle)
 	}
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Server tracking routine running");
+	LOG("Server tracking routine running");
 }
 
 static void catch_server_discovery_datagram(struct ClusterClientHandle* handle)
@@ -235,7 +235,7 @@ static void discover_server(struct ClusterClientHandle* handle)
 	BUG_ON(handle == NULL, "[discover_server] Nullptr argument");
 
 	// Wait for incomping datagram:
-	LOG("[CLUSTER-CLIENT] Waiting for discovery datagram");
+	LOG("Waiting for discovery datagram");
 
 	struct sockaddr_in peer_addr;
 	socklen_t peer_addr_len = sizeof(peer_addr);
@@ -273,7 +273,7 @@ static void discover_server(struct ClusterClientHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
-	LOG("[CLUSTER-CLIENT] Automatically discovered cluster-server at %s:%s", server_host, server_port);
+	LOG("Automatically discovered cluster-server at %s:%s", server_host, server_port);
 }
 
 //-------------------------------
@@ -285,7 +285,7 @@ static void init_connection_management_routine(struct ClusterClientHandle* handl
 	BUG_ON(handle == NULL, "[init_connection_management_routine] Nullptr argument");
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Connection management routine initialized");
+	LOG("Connection management routine initialized");
 }
 
 static void free_connection_management_routine(struct ClusterClientHandle* handle)
@@ -295,7 +295,7 @@ static void free_connection_management_routine(struct ClusterClientHandle* handl
 	close(handle->server_conn.socket_fd);
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Connection management routine resources freed");
+	LOG("Connection management routine resources freed");
 }
 
 static void start_connection_management_routine(struct ClusterClientHandle* handle)
@@ -361,7 +361,7 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	}
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Connection management routine running");
+	LOG("Connection management routine running");
 }
 
 static void update_conn_management(struct ClusterClientHandle* handle)
@@ -386,7 +386,7 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 	}
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Updated connection management: read %s, write %s",
+	LOG("Updated connection management: read %s, write %s",
 	    handle->server_conn.can_read ? "enabled" : "disabled", handle->server_conn.can_write ? "enabled" : "disabled");
 }
 
@@ -418,7 +418,7 @@ static void init_task_computing_routine(struct ClusterClientHandle* handle)
 	}
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Task computing routine initialized");
+	LOG("Task computing routine initialized");
 }
 
 static void free_task_computing_routine(struct ClusterClientHandle* handle)
@@ -429,11 +429,8 @@ static void free_task_computing_routine(struct ClusterClientHandle* handle)
 	free(handle->empty_thread);
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Task computing routine resources freed");
+	LOG("Task computing routine resources freed");
 }
-
-// static void start_task_computing_routine(struct ClusterClientHandle* handle) {}
-// static void pause_task_computing_routine(struct ClusterClientHandle* handle) {}
 
 //-------------------------
 // Task Management Routine
@@ -477,7 +474,7 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 	handle.thread_func     = thread_func;
 	handle.in_process      = 0;
 
-	handle.thread_manager = (struct thread_info*) calloc(num_threads, sizeof(struct thread_info));
+	handle.thread_manager = (struct ThreadInfo*) calloc(num_threads, sizeof(struct ThreadInfo));
 	if (handle.thread_manager == NULL)
 	{
 		LOG_ERROR("[init_cluster_client] alloc info mem");
@@ -558,8 +555,9 @@ static void prepare_ret_buff(struct ClusterClientHandle* handle, size_t num, cha
 
 	buff[0] = 1;
 	buff++;
+
 	(*(size_t*)buff) = handle->thread_manager[num].num_of_task;
-	LOG("[prepare_ret_buff] Send %ld prepared solved task", handle->thread_manager[num].num_of_task);
+	LOG("Send task#%ld reply", handle->thread_manager[num].num_of_task);
 	buff += sizeof(size_t);
 
     memcpy(buff, handle->thread_manager[num].ret_pack, handle->ret_size);
@@ -583,7 +581,7 @@ static void eventfd_handler(struct ClusterClientHandle* handle, struct epoll_eve
 			int ret = read(handle->thread_manager[j].event_fd, &out, sizeof(uint64_t));
 			if (ret < 0)
 			{
-				LOG_ERROR("[client_eventloop] Unable to reduce eventfd");
+				LOG_ERROR("[eventfd_handler] Unable to reduce eventfd");
 				exit(EXIT_FAILURE);
 			}
 
@@ -602,7 +600,7 @@ static void in_handler(struct ClusterClientHandle* handle)
 	int bytes_read = recv(handle->server_conn.socket_fd, recv_buffer, RECV_BUFFER_SIZE, 0);
 	if (bytes_read == -1 || bytes_read < RECV_BUFFER_SIZE)
 	{
-		LOG_ERROR("[client_eventloop] Unable to recieve packet from server");
+		LOG_ERROR("[in_handler] Unable to recieve packet from server");
 		exit(EXIT_FAILURE);
 	}
 
@@ -638,13 +636,13 @@ static void out_handler(struct ClusterClientHandle* handle)
 			int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 			if (bytes_written != SEND_BUFFER_SIZE)
 			{
-				LOG_ERROR("[client_eventloop] Unable to send packet to server");
+				LOG_ERROR("[out_handler] Unable to send packet to server");
 				exit(EXIT_FAILURE);
 			}
 
 			handle->computations_ready[i] = 0;
 
-			LOG("[CLUSTER-CLIENT] Sent packet to server");
+			LOG("Sent packet to server");
 			handle->server_conn.can_read = 1;
 			handle->server_conn.can_write = 1;
 			update_conn_management(handle);
@@ -666,7 +664,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 				exit(EXIT_FAILURE);
 			}
 
-			LOG("[CLUSTER-CLIENT] Sent request to server");
+			LOG("Sent request to server");
 			handle->server_conn.can_read = 1;
 			handle->server_conn.can_write = 0;
 			update_conn_management(handle);
@@ -707,7 +705,7 @@ static void* client_eventloop(void* arg)
 			// Handle "No Discovery Datagrams" Timeout:
 			if (pending_events[ev].data.fd == handle->server_tracking_timeout_fd)
 			{
-				LOG("[CLUSTER-CLIENT] No discovery datagrams recieved in a while. Quitting");
+				LOG("No discovery datagrams recieved in a while. Quitting");
 				exit(EXIT_FAILURE);
 			}
 
@@ -716,7 +714,7 @@ static void* client_eventloop(void* arg)
 			{
 				if (handle->in_process != 0)
 				{
-					LOG("[CLUSTER-CLIENT] Connection shutdown observed. Quitting");
+					LOG("Connection shutdown observed. Quitting");
 					exit(EXIT_FAILURE);
 				}
 
@@ -729,7 +727,6 @@ static void* client_eventloop(void* arg)
 			// Handle connection read:
 			if (pending_events[ev].data.fd == handle->server_conn.socket_fd && pending_events[ev].events & EPOLLIN)
 			{
-				LOG("[CLUSTER-CLIENT] Packet from server arrived");
 				in_handler(handle);
 			}
 
@@ -832,7 +829,7 @@ void init_cluster_client(struct ClusterClientHandle* handle, size_t max_threads,
 	start_connection_management_routine(handle);
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Cluster-client initialized");
+	LOG("Cluster-client initialized");
 }
 
 void stop_cluster_client(struct ClusterClientHandle* handle)
@@ -867,5 +864,5 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 	free_eventfd_managment_routine    (handle);
 
 	// Log:
-	LOG("[CLUSTER-CLIENT] Cluster-client stopped");
+	LOG("Cluster-client stopped");
 }

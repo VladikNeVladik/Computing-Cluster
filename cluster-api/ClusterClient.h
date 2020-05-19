@@ -60,7 +60,7 @@ struct ClusterClientHandle
 	size_t in_process;
 
     // thread managment
-	struct thread_info* thread_manager;
+	struct ThreadInfo* thread_manager;
 	void* task_buffer;
 	void* ret_buffer;
 
@@ -70,18 +70,18 @@ struct ClusterClientHandle
 	void* (*thread_func)(void*);
 };
 
-struct thread_info
+struct ThreadInfo
 {
 	pthread_t thread_id;
-	size_t num_of_task;
-    int num_cpu;
-    int line_size;
-    int event_fd;
-    void* data_pack;
-	void* ret_pack;
+	size_t    num_of_task;
+    int       num_cpu;
+    int       line_size;
+    int       event_fd;
+    void*     data_pack;
+	void*     ret_pack;
 };
 
-enum errors
+enum Errors
 {
     E_ERROR = -1,
     E_CACHE_INFO = -2,
