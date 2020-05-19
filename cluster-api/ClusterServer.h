@@ -29,10 +29,15 @@ struct Connection
 	int  socket_fd;
 	bool can_read;
 	bool can_write;
+	bool want_task;
 
 	// Hot fix variable: !!!!
 	bool   returned_task;
 	size_t active_computations;
+
+	// task managment
+	int* task_list;
+	size_t num_tasks;
 };
 
 struct ClusterServerHandle
@@ -50,6 +55,26 @@ struct ClusterServerHandle
 	struct Connection* client_conns;
 	size_t num_clients;
 	size_t max_clients;
+
+	// task management:
+	struct task_info* task_manager;
+	size_t num_unresolved;
+	size_t num_tasks;
+	size_t size_task;
+	size_t size_ret;
+};
+
+enum{
+	NOT_RESOLVED = 0,
+	RESOLVING,
+	COMPLETED
+};
+
+struct task_info
+{
+	void* task;
+	void* ret;
+	int   status;
 };
 
 //-------------------------------------
@@ -63,6 +88,6 @@ void stop_cluster_server(struct ClusterServerHandle* handle);
 // Computation task management
 //-----------------------------
 
-void* compute_task(struct ClusterServerHandle* handle, size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
+int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
 
 #endif // COMPUTING_CLUSTER_SERVER_HPP_INCLUDED
