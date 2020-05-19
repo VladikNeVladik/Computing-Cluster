@@ -238,7 +238,7 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 	int setsockopt_yes = 1;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPALIVE socket option");
+		LOG_ERROR("[start_connection_management_routine] Unable to set SO_KEEPALIVE socket option");
 		exit(EXIT_FAILURE);
 	}
 
