@@ -121,7 +121,7 @@ __attribute__((unused)) void set_log_file(const char* log_file);
        exit(EXIT_FAILURE);																			\
    	}																								\
 																									\
-	dprintf(log_fd, "[LOG %s:%06ld]", time_str_buf, cur_time.tv_usec);								\
+	dprintf(log_fd, "[LOG %s:%06ld] ", time_str_buf, cur_time.tv_usec);								\
 	dprintf(log_fd, format, ##__VA_ARGS__);															\
 	dprintf(log_fd, "\n");																			\
 } nop()

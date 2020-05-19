@@ -31,11 +31,10 @@ struct Connection
 	bool can_write;
 	bool want_task;
 
-	// Hot fix variable: !!!!
+	// Task managment:
 	bool   returned_task;
 	size_t active_computations;
 
-	// task managment
 	int* task_list;
 	size_t num_tasks;
 };
