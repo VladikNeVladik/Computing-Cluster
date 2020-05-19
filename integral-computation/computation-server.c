@@ -5,9 +5,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-const size_t num_tasks   = 5;
+const size_t num_tasks   = 48;
 const double start_point = 1.0;
-const double end_point   = 33.0;
+const double end_point   = 101.0;
 const double diff        = 0.00000001;
 
 struct task_data
@@ -53,7 +53,7 @@ int main()
 	for (size_t i = 0; i < num_tasks; i++)
 	{
 		// HOT FIX !!!!
-		BUG_ON(ret_buff[i].ret_val == 0.0/*!!!! NAN !!!!*/, "[return loop] ret_val of task is NAN");
+		BUG_ON(ret_buff[i].ret_val != ret_buff[i].ret_val/*!!!! NAN !!!!*/, "[return loop] ret_val of task is NAN");
 		result += ret_buff[i].ret_val;
 	}
 	free(ret_buff);

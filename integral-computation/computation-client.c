@@ -3,6 +3,9 @@
 #include "../cluster-api/ClusterClient.h"
 
 #include <stdlib.h>
+#include <errno.h>
+#include <limits.h>
+
 
 struct task_data
 {
@@ -17,29 +20,59 @@ struct ret_data
 };
 
 void* integral_thread(void* info);
+long int give_num(const char* str_num);
 
 int main(int argc, char* argv[])
 {
 	// Set log file:
 	set_log_file("log/CLIENT-LOG.log");
 
-	// if (argc != 2)
-	// {
-	// 	LOG_ERROR("[client] num of arguments != 2");
-	// 	exit(EXIT_FAILURE);
-	// }
-
-	long int num_thr = 5; //give_num(argv[1]);
-	if (num_thr <= 0)
+	if (argc != 2)
 	{
-	  LOG_ERROR("[client] error number of threads");
-	  exit(EXIT_FAILURE);
+		LOG_ERROR("[client] num of arguments != 2");
+		exit(EXIT_FAILURE);
 	}
 
-	size_t num_threads = 5;
-	client_compute(num_threads, sizeof(struct task_data), sizeof(struct ret_data), NULL, integral_thread);
+	long int num_thr = give_num(argv[1]);
+	if (num_thr <= 0)
+	{
+		LOG_ERROR("[client] error number of threads");
+	 	exit(EXIT_FAILURE);
+	}
+
+	client_compute(num_thr, sizeof(struct task_data), sizeof(struct ret_data), NULL, integral_thread);
 
 	return EXIT_SUCCESS;
+}
+
+long int give_num(const char* str_num)
+{
+    long int in_num = 0;
+    char *end_string;
+
+    errno = 0;
+    in_num = strtoll(str_num, &end_string, 10);
+    if ((errno != 0 && in_num == 0) || (errno == ERANGE && (in_num == LLONG_MAX || in_num == LLONG_MIN))) {
+        printf("Bad string");
+        return -2;
+    }
+
+    if (str_num == end_string) {
+        printf("No number");
+        return -3;
+    }
+
+    if (*end_string != '\0') {
+        printf("Garbage after number");
+        return -4;
+    }
+
+    if (in_num < 0) {
+        printf("i want unsigned num");
+        return -5;
+    }
+
+    return in_num;
 }
 
 double func(double x)
@@ -50,8 +83,6 @@ double func(double x)
 void* integral_thread(void* info)
 {
 	BUG_ON(info == NULL, "[integral_thread] bad argument");
-
-    LOG("[integral_thread] Thread is started");
 
 	cpu_set_t cpu;
 	pthread_t thread = pthread_self();
@@ -95,8 +126,6 @@ void* integral_thread(void* info)
     ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(end) * delta / 2;
     ////////////////////////////////////////////////////////////////////////////
 
-	LOG("[integral_thread] Thread finished computations");
-
 	int sem_fd = ((struct thread_info*)info)->event_fd;
 	uint64_t val = 1u;
 	int ret = write(sem_fd, &val, sizeof(uint64_t));
@@ -105,8 +134,6 @@ void* integral_thread(void* info)
 		LOG_ERROR("[integral_thread] write fd error");
 		exit(EXIT_FAILURE);
 	}
-
-	LOG("[integral_thread] Thread returns");
 
     return NULL;
 }

@@ -491,7 +491,7 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
 
 	init_cluster_server(&handle);
 
-	while(1);
+	//while(1);
 
 	stop_cluster_server(&handle);
 
@@ -505,12 +505,12 @@ static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char
 
     size_t num_ret_packet = *((size_t*)buff);
 
-	printf("%ld solved task\n", num_ret_packet);
+	LOG("[push_ret_val] Recieve %ld solved task", num_ret_packet);
 
 	buff += sizeof(size_t);
 
-	memcpy(handle->task_manager[number].ret, buff, handle->size_ret);
-	handle->task_manager[number].status = COMPLETED;
+	memcpy(handle->task_manager[num_ret_packet].ret, buff, handle->size_ret);
+	handle->task_manager[num_ret_packet].status = COMPLETED;
 
 	(handle->client_conns[number].active_computations)--;
 	size_t i = 0;
@@ -725,14 +725,14 @@ void stop_cluster_server(struct ClusterServerHandle* handle)
 	BUG_ON(handle == NULL, "[stop_cluster_server] Nullptr argument");
 
 	// Stop eventloop:
-	int err = pthread_cancel(handle->eventloop_thr_id);
+	/*int err = pthread_cancel(handle->eventloop_thr_id);
 	if (err != 0)
 	{
 		LOG_ERROR("[stop_cluster_server] pthread_cancel() failed with error %d", err);
 		exit(EXIT_FAILURE);
-	}
+	}*/
 
-	err = pthread_join(handle->eventloop_thr_id, NULL);
+	int err = pthread_join(handle->eventloop_thr_id, NULL);
 	if (err != 0)
 	{
 		LOG_ERROR("[stop_cluster_server] pthread_join() failed with error %d", err);
