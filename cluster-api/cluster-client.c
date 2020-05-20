@@ -312,7 +312,7 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	BUG_ON(handle == NULL, "[start_connection_management_routine] Nullptr argument");
 
 	// Acquire connection socket:
-	int sock_fd = sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	int sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sock_fd == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to create socket");
@@ -324,6 +324,27 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set SO_KEEPALIVE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPIDLE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPINTVL socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPCNT socket option");
 		exit(EXIT_FAILURE);
 	}
 
@@ -398,7 +419,7 @@ static void update_connection_management(struct ClusterClientHandle* handle, boo
 	}
 
 	// Log:
-	LOG("Write on connection %s", can_write ? "enabled" : "disabled");
+	// LOG("Write on connection %s", can_write ? "enabled" : "disabled");
 }
 
 //-----------------------------
@@ -625,7 +646,6 @@ static void prepare_ret_buff(struct ClusterClientHandle* handle, size_t num, cha
 	buff++;
 
 	(*(size_t*)buff) = handle->thread_manager[num].num_of_task;
-	LOG("Send task#%ld reply", handle->thread_manager[num].num_of_task);
 	buff += sizeof(size_t);
 
     memcpy(buff, handle->thread_manager[num].in_args.ret_pack, handle->ret_size);
@@ -667,8 +687,8 @@ static void in_handler(struct ClusterClientHandle* handle)
 	char* buf_ptr = handle->server_conn.recv_buffer + handle->server_conn.bytes_recieved;
 	size_t bytes_to_read = RECV_BUFFER_SIZE - handle->server_conn.bytes_recieved;
 
-	int bytes_read = recv(handle->server_conn.socket_fd, buf_ptr, bytes_to_read, 0);
-	if (bytes_read == -1)
+	int bytes_read = recv(handle->server_conn.socket_fd, buf_ptr, bytes_to_read, MSG_WAITALL);
+	if (bytes_read == -1 || (bytes_read == 1 && *buf_ptr == 0))
 	{
 		LOG_ERROR("[in_handler] Unable to recv() incoming computation request");
 		exit(EXIT_FAILURE);
@@ -683,7 +703,7 @@ static void in_handler(struct ClusterClientHandle* handle)
 
 	handle->server_conn.bytes_recieved = 0;
 
-	LOG("[in_handle] Recv packet # %zu", *(size_t*)(handle->server_conn.recv_buffer));
+	LOG("Recieved computation task#%zu", *(size_t*)(handle->server_conn.recv_buffer));
 
 	for (size_t i = 0; i < handle->max_threads; i++)
 	{
@@ -723,7 +743,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 			handle->computations_ready[i] = 0;
 			(handle->requests_to_send)++;
 
-			LOG("[CLUSTER-CLIENT] Sent result %zu to server", *(size_t*)(send_buffer + 1));
+			LOG("Sent result of task#%zu to server", *(size_t*)(send_buffer + 1));
 			update_connection_management(handle, WRITE_ENABLED);
 		}
 	}
@@ -742,7 +762,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 			exit(EXIT_FAILURE);
 		}
 
-		LOG("[CLUSTER-CLIENT] Sent request to server");
+		LOG("Sent request for more data");
 	}
 
 	update_connection_management(handle, WRITE_DISABLED);
