@@ -33,8 +33,8 @@ struct Connection
 	int  socket_fd;
 
 	// Recv buffer:
-	char*  recv_buff;
-	size_t bytes_recv;
+	char*  recv_buffer;
+	size_t bytes_recieved;
 };
 
 struct ClusterClientHandle

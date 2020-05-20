@@ -298,6 +298,12 @@ static void free_connection_management_routine(struct ClusterServerHandle* handl
 	{
 		if (handle->client_conns[i].socket_fd != -1)
 		{
+			if (shutdown(handle->client_conns[i].socket_fd, SHUT_RDWR) == -1)
+			{
+				LOG_ERROR("[free_connection_management_routine] Unable to shutdown connection#%03zu", i);
+				exit(EXIT_FAILURE);
+			}
+
 			if (close(handle->client_conns[i].socket_fd))
 			{
 				LOG_ERROR("[free_connection_management_routine] Unable to close connection#%03zu", i);
@@ -379,7 +385,7 @@ static void update_connection_management(struct ClusterServerHandle* handle, siz
 	};
 	struct epoll_event event_config =
 	{
-		.events = EPOLLHUP|EPOLLIN|(can_write ? EPOLLOUT),
+		.events = EPOLLHUP|EPOLLIN|(can_write ? EPOLLOUT : 0),
 		.data   = event_data
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_MOD, handle->client_conns[client_index].socket_fd, &event_config) == -1)
@@ -691,7 +697,7 @@ static void* server_eventloop(void* arg)
 					if (handle->client_conns[i].active_computations != handle->client_conns[i].num_tasks &&
 						handle->client_conns[i].want_task == 1)
 					{
-						update_connection_management(handle, WRITE_ENABLED);
+						update_connection_management(handle, i, WRITE_ENABLED);
 					}
 				}
 
@@ -717,7 +723,7 @@ static void* server_eventloop(void* arg)
 						}
 					}
 
-					update_connection_management(handle, WRITE_DISABLED);
+					update_connection_management(handle, i, WRITE_DISABLED);
 
 					LOG("Sent packets through connection#%03zu", i);
 				}

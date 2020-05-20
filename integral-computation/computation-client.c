@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
 
 	if (argc != 2)
 	{
-		LOG_ERROR("[main] Num of arguments != 2");
+		LOG_ERROR("Usage: computation-client <number of worker threads> ");
 		exit(EXIT_FAILURE);
 	}
 
@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
 	long long num_thr = strtoll(argv[1], &endptr, 10);
 	if (*argv[1] == '\0' || *endptr != '\0')
 	{
-		LOG_ERROR("[main] Invalid number of threads");
+		LOG_ERROR("Usage: Invalid number of worker threads");
 	 	exit(EXIT_FAILURE);
 	}
 
