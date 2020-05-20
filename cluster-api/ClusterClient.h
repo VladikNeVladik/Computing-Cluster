@@ -71,8 +71,12 @@ struct ClusterClientHandle
 
 	size_t ret_size;
 	size_t task_size;
+};
 
-	void* (*thread_func)(void*);
+struct ComputeInfo
+{
+	void* data_pack;
+	void* ret_pack;
 };
 
 struct ThreadInfo
@@ -82,8 +86,10 @@ struct ThreadInfo
     int       num_cpu;
     int       line_size;
     int       event_fd;
-    void*     data_pack;
-	void*     ret_pack;
+
+	struct ComputeInfo in_args;
+
+	void*     (*thread_func)(void*);
 };
 
 enum Errors

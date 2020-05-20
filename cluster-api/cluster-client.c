@@ -489,9 +489,10 @@ static int cache_line_size()
     return line_size;
 }
 
-static void init_computation_routine(struct ClusterClientHandle* handle)
+static void init_computation_routine(struct ClusterClientHandle* handle, void* (*thread_func)(void*))
 {
 	BUG_ON(handle == NULL, "[init_computation_routine] handle is NULL");
+	BUG_ON(thread_func == NULL, "[init_computation_routine] Nullptr handle");
 
 	handle->in_process       = 0;
 	handle->waiting_requests = 0;
@@ -525,8 +526,9 @@ static void init_computation_routine(struct ClusterClientHandle* handle)
 		handle->thread_manager[i].num_cpu     = i % cpu_size;
 		handle->thread_manager[i].num_of_task = 0;
 		handle->thread_manager[i].line_size   = cache;
-		handle->thread_manager[i].data_pack   = handle->task_buffer + i * (handle->task_size + cpu_size);
-		handle->thread_manager[i].ret_pack    = handle->ret_buffer + i * (handle->ret_size + cpu_size);
+		handle->thread_manager[i].thread_func = thread_func;
+		handle->thread_manager[i].in_args.data_pack   = handle->task_buffer + i * (handle->task_size + cpu_size);
+		handle->thread_manager[i].in_args.ret_pack    = handle->ret_buffer + i * (handle->ret_size + cpu_size);
 	}
 }
 
@@ -553,16 +555,55 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 	handle.server_hostname  = master_host;
 	handle.ret_size         = ret_size;
 	handle.task_size        = task_size;
-	handle.thread_func      = thread_func;
 	handle.requests_to_send = num_threads;
 
-	init_computation_routine(&handle);
+	init_computation_routine(&handle, thread_func);
 
 	init_cluster_client(&handle, num_threads, NULL);
 
 	stop_cluster_client(&handle);
 
 	free_computation_routine(&handle);
+}
+
+static void* function_wrapper(void* data)
+{
+	BUG_ON(data == NULL, "[function_wrap] handle is NULL");
+
+	struct ThreadInfo* info = (struct ThreadInfo*) data;
+
+	cpu_set_t cpu;
+	pthread_t thread = pthread_self();
+	int num_cpu = info->num_cpu;
+
+	void* (*func)(void*) = info->thread_func;
+
+	if (num_cpu > 0)
+	{
+		CPU_ZERO(&cpu);
+		CPU_SET(num_cpu, &cpu);
+
+		int ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpu);
+		if (ret < 0)
+		{
+			LOG_ERROR("[integral_thread] Set affinity error");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	void* ret_val = (*func)(&(info->in_args));
+
+	// Return results:
+	int sem_fd = info->event_fd;
+	uint64_t val = 1u;
+	int ret = write(sem_fd, &val, sizeof(uint64_t)); // What the FUCK, Max?
+	if (ret < 0)
+	{
+		LOG_ERROR("[integral_thread] Write fd error");
+		exit(EXIT_FAILURE);
+	}
+
+	return ret_val;
 }
 
 static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
@@ -573,7 +614,7 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 	handle->thread_manager[num].num_of_task = *((size_t*)buff);
 
 	buff += sizeof(size_t);
-    memcpy(handle->thread_manager[num].data_pack, buff, handle->task_size);
+    memcpy(handle->thread_manager[num].in_args.data_pack, buff, handle->task_size);
 
     pthread_attr_t attr;
 
@@ -584,7 +625,8 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 		exit(EXIT_FAILURE);
 	}
 
-	ret = pthread_create(&(handle->thread_manager[num].thread_id), NULL, handle->thread_func, &(handle->thread_manager[num]));
+
+	ret = pthread_create(&(handle->thread_manager[num].thread_id), NULL, function_wrapper, &(handle->thread_manager[num]));
 	if (ret < 0)
 	{
 		LOG_ERROR("[start_thread] Creating thread error");
@@ -606,7 +648,7 @@ static void prepare_ret_buff(struct ClusterClientHandle* handle, size_t num, cha
 	(*(size_t*)buff) = handle->thread_manager[num].num_of_task;
 	buff += sizeof(size_t);
 
-    memcpy(buff, handle->thread_manager[num].ret_pack, handle->ret_size);
+    memcpy(buff, handle->thread_manager[num].in_args.ret_pack, handle->ret_size);
 
 	handle->in_process--;
 	handle->empty_thread[num] = 1;
@@ -712,7 +754,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 	{
 		char send_buffer[SEND_BUFFER_SIZE];
 		send_buffer[0] = 0;
-    
+
 		int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 		if (bytes_written != SEND_BUFFER_SIZE)
 		{
