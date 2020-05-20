@@ -503,7 +503,7 @@ static void init_computation_routine(struct ClusterServerHandle* handle, void* t
 	handle->task_manager = (struct task_info*) calloc(handle->num_tasks, sizeof(struct task_info));
 	if (handle->task_manager == NULL)
 	{
-		LOG_ERROR("[compute_task] alloc task manager");
+		LOG_ERROR("[init_computation_routine] alloc task manager");
 		exit(EXIT_FAILURE);
 	}
 
@@ -524,11 +524,11 @@ static void free_computation_routine(struct ClusterServerHandle* handle)
 
 int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret)
 {
-	BUG_ON(num_tasks == 0, "[compute_task] error tasks number");
-	BUG_ON(tasks == NULL, "[compute_task] task buffer is nullptr");
-	BUG_ON(size_task == 0, "[compute_task] invalid task size");
-	BUG_ON(rets == NULL, "[compute_task] ret buffer is nullptr");
-	BUG_ON(size_ret ==  0, "[compute_task] invalid ret size");
+	BUG_ON(num_tasks == 0, "[compute_task] Error tasks number");
+	BUG_ON(tasks == NULL,  "[compute_task] Task buffer is nullptr");
+	BUG_ON(size_task == 0, "[compute_task] Invalid task size");
+	BUG_ON(rets == NULL,   "[compute_task] Ret buffer is nullptr");
+	BUG_ON(size_ret ==  0, "[compute_task] Invalid ret size");
 
 	struct ClusterServerHandle handle;
 
@@ -550,8 +550,8 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
 
 static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char* buff)
 {
-	BUG_ON(handle == NULL, "[push_ret_val] in pointer is invalid");
-	BUG_ON(buff == NULL, "[push_ret_val] buff pointer is invalid");
+	BUG_ON(handle == NULL, "[push_ret_val] Pointer is invalid");
+	BUG_ON(buff == NULL,   "[push_ret_val] Buffer pointer is invalid");
 
     size_t num_ret_packet = *((size_t*)buff);
 
@@ -835,14 +835,6 @@ void init_cluster_server(struct ClusterServerHandle* handle)
 void stop_cluster_server(struct ClusterServerHandle* handle)
 {
 	BUG_ON(handle == NULL, "[stop_cluster_server] Nullptr argument");
-
-	// Stop eventloop:
-	// int err = pthread_cancel(handle->eventloop_thr_id);
-	// if (err != 0)
-	// {
-	// 	LOG_ERROR("[stop_cluster_server] pthread_cancel() failed with error %d", err);
-	// 	exit(EXIT_FAILURE);
-	// }
 
 	int err = pthread_join(handle->eventloop_thr_id, NULL);
 	if (err != 0)
