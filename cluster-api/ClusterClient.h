@@ -31,8 +31,10 @@ typedef char bool;
 struct Connection
 {
 	int  socket_fd;
-	bool can_read;
-	bool can_write;
+
+	// Recv buffer:
+	char*  recv_buff;
+	size_t bytes_recv;
 };
 
 struct ClusterClientHandle
@@ -59,13 +61,10 @@ struct ClusterClientHandle
 	bool* empty_thread;
 	size_t in_process;
 
-    // thread managment
+    // Thread managment
 	struct ThreadInfo* thread_manager;
 	void* task_buffer;
 	void* ret_buffer;
-
-	char* recv_buff;
-	size_t bytes_recv;
 
 	size_t ret_size;
 	size_t task_size;

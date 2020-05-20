@@ -27,8 +27,6 @@ typedef char bool;
 struct Connection
 {
 	int  socket_fd;
-	bool can_read;
-	bool can_write;
 	bool want_task;
 
 	// Task managment:

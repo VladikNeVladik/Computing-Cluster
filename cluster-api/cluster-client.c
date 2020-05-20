@@ -364,7 +364,13 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	LOG("Connection management routine running");
 }
 
-static void update_conn_management(struct ClusterClientHandle* handle)
+enum
+{
+	WRITE_DISABLED,
+	WRITE_ENABLED
+};
+
+static void update_connection_management(struct ClusterClientHandle* handle, bool can_write)
 {
 	BUG_ON(handle == NULL, "[start_conn_in_management] Nullptr argument");
 
@@ -375,8 +381,7 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 	};
 	struct epoll_event event_config =
 	{
-		.events = (handle->server_conn.can_read  ? EPOLLIN  : 0) |
-		          (handle->server_conn.can_write ? EPOLLOUT : 0) | EPOLLHUP,
+		.events = EPOLLHUP|EPOLLIN|(can_write ? EPOLLOUT : 0),
 		.data   = event_data
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_MOD, handle->server_conn.socket_fd, &event_config) == -1)
@@ -386,8 +391,7 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 	}
 
 	// Log:
-	LOG("Updated connection management: read %s, write %s",
-	    handle->server_conn.can_read ? "enabled" : "disabled", handle->server_conn.can_write ? "enabled" : "disabled");
+	LOG("Write on connection %s", can_write ? "enabled" : "disabled");
 }
 
 //-----------------------------
@@ -596,8 +600,7 @@ static void eventfd_handler(struct ClusterClientHandle* handle, struct epoll_eve
 				exit(EXIT_FAILURE);
 			}
 
-			handle->server_conn.can_write = 1;
-			update_conn_management(handle);
+			update_connection_management(handle, WRITE_ENABLED);
 		}
 	}
 }
@@ -628,11 +631,8 @@ static void in_handler(struct ClusterClientHandle* handle)
 		}
 	}
 
-	handle->server_conn.can_read = 1;
-	if (handle->in_process != handle->max_threads)
-		handle->server_conn.can_write = 1;
-
-	update_conn_management(handle);
+	// Enable write if handle->in_process != handle->max_threads:
+	update_connection_management(handle, handle->in_process != handle->max_threads);
 }
 
 static void out_handler(struct ClusterClientHandle* handle)
@@ -658,9 +658,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 			handle->computations_ready[i] = 0;
 
 			LOG("Sent packet to server");
-			handle->server_conn.can_read = 1;
-			handle->server_conn.can_write = 1;
-			update_conn_management(handle);
+			update_connection_management(handle, WRITE_ENABLED);
 			return;
 		}
 	}
@@ -680,9 +678,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 			}
 
 			LOG("Sent request to server");
-			handle->server_conn.can_read = 1;
-			handle->server_conn.can_write = 0;
-			update_conn_management(handle);
+			update_connection_management(handle, WRITE_DISABLED);
 			return;
 		}
 	}
