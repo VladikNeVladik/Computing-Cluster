@@ -170,7 +170,7 @@ void perform_discovery_send(struct ClusterServerHandle* handle)
 	uint64_t timer_expirations = 0;
 	if (read(handle->discovery_timer_fd, &timer_expirations, 8) == -1)
 	{
-		LOG_ERROR("[server_eventloop] Unable to perform read on timer file descriptor");
+		LOG_ERROR("[perform_discovery_send] Unable to perform read on timer file descriptor");
 		exit(EXIT_FAILURE);
 	}
 
@@ -450,7 +450,7 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 	{
 		.socket_fd            = client_socket_fd,
 		.want_task            = 0,
-		.returned_task        = 1,
+		.returned_task        = 0,
 		.active_computations  = 0,
 		.num_tasks            = TASK_LIST_SIZE,
 		.recv_buffer          = already_allocated_buffer,
@@ -675,7 +675,7 @@ static void* server_eventloop(void* arg)
 	struct ClusterServerHandle* handle = arg;
 	BUG_ON(handle == NULL, "[server_eventloop] Nullptr argument");
 
-	const int MAX_EVENTS       = 16;
+	const int MAX_EVENTS = 16;
 	int RECV_BUFFER_SIZE = handle->size_ret + sizeof(size_t) + sizeof(char);
     int SEND_BUFFER_SIZE = handle->size_task + sizeof(size_t);
 
