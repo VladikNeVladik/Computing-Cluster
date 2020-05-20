@@ -17,5 +17,5 @@ void set_log_file(const char* log_file)
 
 	LOG_FILE = log_file;
 
-	LOG(" Changed log file to %s", log_file);
+	LOG("Changed log file to %s", log_file);
 }
