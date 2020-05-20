@@ -55,24 +55,7 @@ void* integral_thread(void* arg)
 {
 	BUG_ON(arg == NULL, "[integral_thread] Bad argument");
 
-	struct ThreadInfo* info = arg;
-
-	cpu_set_t cpu;
-	pthread_t thread = pthread_self();
-	int num_cpu = info->num_cpu;
-
-	if (num_cpu > 0)
-	{
-		CPU_ZERO(&cpu);
-		CPU_SET(num_cpu, &cpu);
-
-		int ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpu);
-		if (ret < 0)
-		{
-			LOG_ERROR("[integral_thread] Set affinity error");
-			exit(EXIT_FAILURE);
-		}
-	}
+	struct ComputeInfo* info = arg;
 
     // Computation:
     struct task_data* data_pack = info->data_pack;
@@ -82,15 +65,7 @@ void* integral_thread(void* arg)
     double delta   = data_pack->step;
     double end     = data_pack->end;
     double start   = data_pack->start;
-	int cache_size = info->line_size;
 	double x       = start + delta;
-
-    struct ret_data* out = (struct ret_data*) malloc(cache_size * 2); //cache block size
-    if (out == NULL)
-	{
-		LOG_ERROR("[integral_thread] Return alloc error");
-		exit(EXIT_FAILURE);
-	}
 
 	struct ret_data* ret_data = info->ret_pack;
 
@@ -102,15 +77,5 @@ void* integral_thread(void* arg)
     ret_data->sum += func(start) * delta / 2;
     ret_data->sum += func(end) * delta / 2;
 
-    // Return results:
-	int sem_fd = info->event_fd;
-	uint64_t val = 1u;
-	int ret = write(sem_fd, &val, sizeof(uint64_t)); // What the FUCK, Max?
-	if (ret < 0)
-	{
-		LOG_ERROR("[integral_thread] Write fd error");
-		exit(EXIT_FAILURE);
-	}
-
-    return NULL;
+	return NULL;
 }
