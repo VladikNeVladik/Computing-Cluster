@@ -160,23 +160,11 @@ void perform_discovery_send(struct ClusterServerHandle* handle)
 	BUG_ON(handle == NULL, "[perform_discovery_send] Nullptr argument");
 
 	char send_buffer[DISCOVERY_DATAGRAM_SIZE];
-	int bytes_written = write(handle->discovery_socket_fd, send_buffer, DISCOVERY_DATAGRAM_SIZE);
+	int bytes_written = send(handle->discovery_socket_fd, send_buffer, DISCOVERY_DATAGRAM_SIZE, MSG_NOSIGNAL);
 	if (bytes_written == -1)
 	{
-		if (errno == ECONNREFUSED)
-		{
-			LOG("No clients detected by a discovery datagram!");
-		}
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-		{
-			LOG_ERROR("[perform_discovery_send] Unable to broadcast discovery datagram");
-			exit(EXIT_FAILURE);
-		}
-		else
-		{
-			LOG_ERROR("[perform_discovery_send] Unable to send data");
-			exit(EXIT_FAILURE);
-		}
+		LOG_ERROR("Unable to broadcast discovery datagram");
+		exit(EXIT_FAILURE);
 	}
 
 	uint64_t timer_expirations = 0;
@@ -260,15 +248,8 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 		nanosleep(&sleep_request, NULL);
 	}
 
-	// Ask socket to automatically detect disconnection:
-	int setsockopt_yes = 1;
-	if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set SO_KEEPALIVE socket option");
-		exit(EXIT_FAILURE);
-	}
-
 	// Disable the TIME-WAIT state of a socket:
+	int setsockopt_yes = 1;
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set SO_REUSEADDR socket option");
@@ -300,13 +281,13 @@ static void free_connection_management_routine(struct ClusterServerHandle* handl
 		{
 			if (shutdown(handle->client_conns[i].socket_fd, SHUT_RDWR) == -1)
 			{
-				LOG_ERROR("[free_connection_management_routine] Unable to shutdown connection#%03zu", i);
+				LOG_ERROR("[free_connection_management_routine] Unable to shutdown connection#%zu", i);
 				exit(EXIT_FAILURE);
 			}
 
 			if (close(handle->client_conns[i].socket_fd))
 			{
-				LOG_ERROR("[free_connection_management_routine] Unable to close connection#%03zu", i);
+				LOG_ERROR("[free_connection_management_routine] Unable to close connection#%zu", i);
 				exit(EXIT_FAILURE);
 			}
 
@@ -390,12 +371,12 @@ static void update_connection_management(struct ClusterServerHandle* handle, siz
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_MOD, handle->client_conns[client_index].socket_fd, &event_config) == -1)
 	{
-		LOG_ERROR("[start_connection_management_routine] Unable to update connection#%03zu in epoll", client_index);
+		LOG_ERROR("[start_connection_management_routine] Unable to update connection#%zu in epoll", client_index);
 		exit(EXIT_FAILURE);
 	}
 
 	// Log:
-	LOG("Write on connection#%03zu %s", client_index, can_write ? "enabled" : "disabled");
+	// LOG("Write on connection#%zu %s", client_index, can_write ? "enabled" : "disabled");
 }
 
 const size_t TASK_LIST_SIZE = 24;
@@ -411,6 +392,35 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 		if (errno == EAGAIN) return;
 
 		LOG_ERROR("[accept_incoming_connection_request] Unable to accept4() incoming connection request");
+		exit(EXIT_FAILURE);
+	}
+
+	// Ask socket to automatically detect disconnection:
+	int setsockopt_yes = 1;
+	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set SO_KEEPALIVE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPIDLE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPINTVL socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPCNT socket option");
 		exit(EXIT_FAILURE);
 	}
 
@@ -470,13 +480,13 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->client_conns[client_index].socket_fd, &event_config) == -1)
 	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to add connection#%03zu to epoll", client_index);
+		LOG_ERROR("[accept_incoming_connection_request] Unable to add connection#%zu to epoll", client_index);
 		exit(EXIT_FAILURE);
 	}
 
 	// Log:
 	LOG("Incoming connection request accepted");
-	LOG("Connection#%03zu now active", client_index);
+	LOG("Connection#%zu now active", client_index);
 }
 
 //-------------------------
@@ -545,7 +555,7 @@ static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char
 
     size_t num_ret_packet = *((size_t*)buff);
 
-	LOG("Recieve %ld solved task", num_ret_packet);
+	LOG("Recieved results of task#%ld", num_ret_packet);
 
 	buff += sizeof(size_t);
 
@@ -604,17 +614,57 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 	return -1;
 }
 
-// static void drop_unresolved(struct ClusterServerHandle* handle, size_t number)
-// {
-// 	BUG_ON(handle == NULL, "[get_task] in pointer is invalid");
+static void drop_unresolved(struct ClusterServerHandle* handle, size_t conn_i)
+{
+	BUG_ON(handle == NULL, "[drop_unresolved] in pointer is invalid");
 
-// 	for(int i = 0; i < handle->client_conns[number].num_tasks; i++)
-// 	{
-// 		if (handle->client_conns[number].task_list[i] > -1 && handle->client_conns[number].task_list[i] < handle->num_tasks)
-// 			handle->task_manager[handle->client_conns[number].task_list[i]].status = NOT_RESOLVED;
-// 		handle->client_conns[number].active_computations = 0;
-// 	}
-// }
+	for(int i = 0; i < handle->client_conns[conn_i].num_tasks; i++)
+	{
+		int task_i = handle->client_conns[conn_i].task_list[i];
+
+		if (task_i != -1 && task_i < handle->num_tasks)
+		{
+			handle->task_manager[task_i].status = NOT_RESOLVED;
+			
+			LOG("Returning task#%d to task pool", task_i);
+		}
+
+		handle->client_conns[conn_i].active_computations = 0;
+	}
+}
+
+static void delete_connection(struct ClusterServerHandle* handle, size_t client_i)
+{
+	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
+
+	// Start accepting incoming connections:
+	if (handle->num_clients == handle->max_clients)
+	{
+		start_connection_management_routine(handle);
+	}
+
+	// Delete connection socket from epoll:
+	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->client_conns[client_i].socket_fd, NULL) == -1)
+	{
+		LOG_ERROR("[delete_connection] Unable to delete connection#%zu from epoll", client_i);
+		exit(EXIT_FAILURE);
+	}
+
+	if (close(handle->client_conns[client_i].socket_fd) == -1)
+	{
+		LOG_ERROR("[delete_connection] Unable to close connection#%zu socket", client_i);
+		exit(EXIT_FAILURE);
+	}
+
+	handle->client_conns[client_i].socket_fd = -1;
+
+	free(handle->client_conns[client_i].task_list);
+
+	handle->num_clients -= 1;
+
+	// Log:
+	LOG("Deleted connection#%zu", client_i);
+}
 
 //------------------
 // Server Eventloop
@@ -656,38 +706,32 @@ static void* server_eventloop(void* arg)
 			// Manage connections:
 			for (size_t i = 0; i < handle->max_clients; ++i)
 			{
-				if (pending_events[ev].data.fd != handle->client_conns[i].socket_fd) continue;
+				if (handle->client_conns[i].socket_fd != pending_events[ev].data.fd) continue;
 				if (handle->client_conns[i].socket_fd == -1) continue;
 
 				if (pending_events[ev].events & EPOLLHUP)
 				{
-					LOG_ERROR("Connection#%03zu hangup detected", i);
-					exit(EXIT_FAILURE);
+					LOG_ERROR("Connection#%zu hangup detected", i);
 					
-					// drop_unresolved(handle, i);
-					// delete_connection(handle, i);
-					// continue;
+					drop_unresolved(handle, i);
+					delete_connection(handle, i);
+					continue;
 				}
 
 				if (pending_events[ev].events & EPOLLIN)
 				{
-					LOG("Recieved packet on connection#%03zu", i);
-
 					// Manage recieve buffer:
 					char* buf_ptr = handle->client_conns[i].recv_buffer + handle->client_conns[i].bytes_recieved;
 					size_t bytes_to_read = RECV_BUFFER_SIZE - handle->client_conns[i].bytes_recieved;
 
 					int bytes_read = recv(handle->client_conns[i].socket_fd, buf_ptr, bytes_to_read, MSG_WAITALL);
-					if (bytes_read == -1)
+					if (bytes_read == -1 || (bytes_read == 0 && *buf_ptr == 0))
 					{
-						LOG_ERROR("[server_eventloop] Unable to recv()");
-						exit(EXIT_FAILURE);
+						LOG("Dropping connection#%zu because of recieve error", i);
 
-						// LOG("Dropping connection#%03zu because of recieve error", i);
-
-						// drop_unresolved(handle, i);
-						// delete_connection(handle, i);
-						// continue;
+						drop_unresolved(handle, i);
+						delete_connection(handle, i);
+						continue;
 					}
 
 					handle->client_conns[i].bytes_recieved += bytes_read;
@@ -701,7 +745,6 @@ static void* server_eventloop(void* arg)
 
 					if (control_byte == 0)
 					{
-						LOG("Recieved request");
 						handle->client_conns[i].want_task = 1;
 					}
 
@@ -722,31 +765,28 @@ static void* server_eventloop(void* arg)
 					char send_buffer[SEND_BUFFER_SIZE];
 
                     int ret = get_task(handle, i, send_buffer);
-                    LOG("Giving out task#%d", ret);
 					if (ret != -1)
 					{
 						int bytes_written = send(handle->client_conns[i].socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 						if (bytes_written != SEND_BUFFER_SIZE)
 						{
-							LOG_ERROR("[server_eventloop] Unable to send()");
-							exit(EXIT_FAILURE);
+							LOG("Dropping connection#%zu because of send error", i);
 
-							// LOG("Dropping connection#%03zu because of send error", i);
-
-							// drop_unresolved(handle, i);
-							// delete_connection(handle, i);
-							// continue;
+							drop_unresolved(handle, i);
+							delete_connection(handle, i);
+							continue;
 						}
+
+						LOG("Given out task#%d", ret);
 					}
 
 					update_connection_management(handle, i, WRITE_DISABLED);
 
-					LOG("Sent packets through connection#%03zu", i);
+					// LOG("Sent packets through connection#%zu", i);
 				}
 			}
 		}
 
-		LOG("Unresolved tasks left: %zu", handle->num_unresolved);
 		if (handle->num_unresolved == 0)
 			break;
 	}
