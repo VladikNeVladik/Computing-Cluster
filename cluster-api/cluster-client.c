@@ -284,6 +284,15 @@ static void init_connection_management_routine(struct ClusterClientHandle* handl
 {
 	BUG_ON(handle == NULL, "[init_connection_management_routine] Nullptr argument");
 
+	handle->server_conn.recv_buffer = (char*) calloc(handle->task_size + sizeof(size_t), sizeof(char));
+	if (handle->server_conn.recv_buffer == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc recv buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	handle->server_conn.bytes_recieved = 0;
+
 	// Log:
 	LOG("Connection management routine initialized");
 }
@@ -341,8 +350,6 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	}
 
 	handle->server_conn.socket_fd = sock_fd;
-	handle->server_conn.can_read  = 1;
-	handle->server_conn.can_write = 1;
 
 	// Add socket to epoll:
 	epoll_data_t event_data =
@@ -364,7 +371,13 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	LOG("Connection management routine running");
 }
 
-static void update_conn_management(struct ClusterClientHandle* handle)
+enum
+{
+	WRITE_DISABLED,
+	WRITE_ENABLED
+};
+
+static void update_connection_management(struct ClusterClientHandle* handle, bool can_write)
 {
 	BUG_ON(handle == NULL, "[start_conn_in_management] Nullptr argument");
 
@@ -375,8 +388,7 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 	};
 	struct epoll_event event_config =
 	{
-		.events = (handle->server_conn.can_read  ? EPOLLIN  : 0) |
-		          (handle->server_conn.can_write ? EPOLLOUT : 0) | EPOLLHUP,
+		.events = EPOLLHUP|EPOLLIN|(can_write ? EPOLLOUT : 0),
 		.data   = event_data
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_MOD, handle->server_conn.socket_fd, &event_config) == -1)
@@ -386,8 +398,7 @@ static void update_conn_management(struct ClusterClientHandle* handle)
 	}
 
 	// Log:
-	LOG("Updated connection management: read %s, write %s",
-	    handle->server_conn.can_read ? "enabled" : "disabled", handle->server_conn.can_write ? "enabled" : "disabled");
+	LOG("Write on connection %s", can_write ? "enabled" : "disabled");
 }
 
 //-----------------------------
@@ -498,15 +509,6 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 		exit(EXIT_FAILURE);
 	}
 
-	handle.recv_buff = (char*) calloc(task_size + sizeof(size_t), sizeof(char));
-	if (handle.recv_buff == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc recv buffer");
-		exit(EXIT_FAILURE);
-	}
-	handle.bytes_recv = 0;
-
-
 	for (int i = 0; i < num_threads; i++)
 	{
 		handle.thread_manager[i].num_cpu     = i % cpu_size;
@@ -518,14 +520,11 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 
 	init_cluster_client(&handle, num_threads, NULL);
 
-	//while(1);
-
 	stop_cluster_client(&handle);
 
 	free(handle.task_buffer);
 	free(handle.ret_buffer);
 	free(handle.thread_manager);
-	free(handle.recv_buff);
 }
 
 static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
@@ -534,7 +533,7 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 	BUG_ON(buff == NULL, "[start_thread] recv buff is NULL");
 
 	handle->thread_manager[num].num_of_task = *((size_t*)buff);
-	LOG("[in_handle] Recv packet # %zu", handle->thread_manager[num].num_of_task);
+	LOG("[in_handle] Recieved packet # %zu", handle->thread_manager[num].num_of_task);
 
 	buff += sizeof(size_t);
     memcpy(handle->thread_manager[num].data_pack, buff, handle->task_size);
@@ -544,7 +543,7 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 	int ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	if (ret < 0)
 	{
-		LOG_ERROR("[start thread] detache state error");
+		LOG_ERROR("[start_thread] Detach state error");
 		exit(EXIT_FAILURE);
 	}
 
@@ -596,8 +595,7 @@ static void eventfd_handler(struct ClusterClientHandle* handle, struct epoll_eve
 				exit(EXIT_FAILURE);
 			}
 
-			handle->server_conn.can_write = 1;
-			update_conn_management(handle);
+			update_connection_management(handle, WRITE_ENABLED);
 		}
 	}
 }
@@ -608,31 +606,36 @@ static void in_handler(struct ClusterClientHandle* handle)
 
 	size_t RECV_BUFFER_SIZE = sizeof(size_t) + handle->task_size;
 
-	int bytes_read = recv(handle->server_conn.socket_fd, handle->recv_buff + handle->bytes_recv, RECV_BUFFER_SIZE - handle->bytes_recv, 0);
+	char* buf_ptr = handle->server_conn.recv_buffer + handle->server_conn.bytes_recieved;
+	size_t bytes_to_read = RECV_BUFFER_SIZE - handle->server_conn.bytes_recieved;
+
+	int bytes_read = recv(handle->server_conn.socket_fd, buf_ptr, bytes_to_read, 0);
 	if (bytes_read == -1)
 	{
-		LOG_ERROR("[in_handler] Unable to recieve packet from server");
+		LOG_ERROR("[in_handler] Unable to recv() incoming computation request");
 		exit(EXIT_FAILURE);
 	}
-	handle->bytes_recv += bytes_read;
-	if (handle->bytes_recv < RECV_BUFFER_SIZE)
+
+	handle->server_conn.bytes_recieved += bytes_read;
+	if (handle->server_conn.bytes_recieved < RECV_BUFFER_SIZE)
+	{
+		// Do not handle request:
 		return;
-	handle->bytes_recv = 0;
+	}
+
+	handle->server_conn.bytes_recieved = 0;
 
 	for (size_t i = 0; i < handle->max_threads; i++)
 	{
 		if (handle->empty_thread[i] == 1)
 		{
-			start_thread(handle, i, handle->recv_buff);
+			start_thread(handle, i, handle->server_conn.recv_buffer);
 			break;
 		}
 	}
 
-	handle->server_conn.can_read = 1;
-	if (handle->in_process != handle->max_threads)
-		handle->server_conn.can_write = 1;
-
-	update_conn_management(handle);
+	// Enable write if handle->in_process != handle->max_threads:
+	update_connection_management(handle, handle->in_process != handle->max_threads);
 }
 
 static void out_handler(struct ClusterClientHandle* handle)
@@ -658,9 +661,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 			handle->computations_ready[i] = 0;
 
 			LOG("Sent packet to server");
-			handle->server_conn.can_read = 1;
-			handle->server_conn.can_write = 1;
-			update_conn_management(handle);
+			update_connection_management(handle, WRITE_ENABLED);
 			return;
 		}
 	}
@@ -680,9 +681,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 			}
 
 			LOG("Sent request to server");
-			handle->server_conn.can_read = 1;
-			handle->server_conn.can_write = 0;
-			update_conn_management(handle);
+			update_connection_management(handle, WRITE_DISABLED);
 			return;
 		}
 	}
@@ -850,14 +849,6 @@ void init_cluster_client(struct ClusterClientHandle* handle, size_t max_threads,
 void stop_cluster_client(struct ClusterClientHandle* handle)
 {
 	BUG_ON(handle == NULL, "[stop_cluster_client] Nullptr argument");
-
-	// Stop eventloop:
-	/*int err = pthread_cancel(handle->eventloop_thr_id);
-	if (err != 0)
-	{
-		LOG_ERROR("[stop_cluster_client] pthread_cancel() failed with error %d", err);
-		exit(EXIT_FAILURE);
-	}*/
 
 	int err = pthread_join(handle->eventloop_thr_id, NULL);
 	if (err != 0)

@@ -298,6 +298,12 @@ static void free_connection_management_routine(struct ClusterServerHandle* handl
 	{
 		if (handle->client_conns[i].socket_fd != -1)
 		{
+			if (shutdown(handle->client_conns[i].socket_fd, SHUT_RDWR) == -1)
+			{
+				LOG_ERROR("[free_connection_management_routine] Unable to shutdown connection#%03zu", i);
+				exit(EXIT_FAILURE);
+			}
+
 			if (close(handle->client_conns[i].socket_fd))
 			{
 				LOG_ERROR("[free_connection_management_routine] Unable to close connection#%03zu", i);
@@ -362,7 +368,13 @@ static void pause_connection_management_routine(struct ClusterServerHandle* hand
 	LOG("Connection management paused");
 }
 
-static void update_connection_management(struct ClusterServerHandle* handle, size_t client_index)
+enum
+{
+	WRITE_DISABLED,
+	WRITE_ENABLED
+};
+
+static void update_connection_management(struct ClusterServerHandle* handle, size_t client_index, bool can_write)
 {
 	BUG_ON(handle == NULL, "[start_conn_in_management] Nullptr argument");
 
@@ -373,8 +385,7 @@ static void update_connection_management(struct ClusterServerHandle* handle, siz
 	};
 	struct epoll_event event_config =
 	{
-		.events = (handle->client_conns[client_index].can_read  ? EPOLLIN  : 0) |
-		          (handle->client_conns[client_index].can_write ? EPOLLOUT : 0) | EPOLLHUP,
+		.events = EPOLLHUP|EPOLLIN|(can_write ? EPOLLOUT : 0),
 		.data   = event_data
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_MOD, handle->client_conns[client_index].socket_fd, &event_config) == -1)
@@ -384,43 +395,8 @@ static void update_connection_management(struct ClusterServerHandle* handle, siz
 	}
 
 	// Log:
-	LOG("Updated connection#%03zu: read %s, write %s", client_index,
-	    handle->client_conns[client_index].can_read  ? "enabled" : "disabled",
-	    handle->client_conns[client_index].can_write ? "enabled" : "disabled");
+	LOG("Write on connection#%03zu %s", client_index, can_write ? "enabled" : "disabled");
 }
-
-// static void delete_connection(struct ClusterServerHandle* handle, size_t client_index)
-// {
-// 	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
-
-// 	// Start accepting incoming connections:
-// 	if (handle->num_clients == handle->max_clients)
-// 	{
-// 		start_connection_management_routine(handle);
-// 	}
-
-// 	// Delete socket from epoll:
-// 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->client_conns[client_index].socket_fd, NULL) == -1)
-// 	{
-// 		LOG_ERROR("[delete_connection] Unable to delete connection#%03zu from epoll", client_index);
-// 		exit(EXIT_FAILURE);
-// 	}
-
-// 	if (close(handle->client_conns[client_index].socket_fd) == -1)
-// 	{
-// 		LOG_ERROR("[delete_connection] Unable to close socket");
-// 		exit(EXIT_FAILURE);
-// 	}
-
-// 	handle->client_conns[client_index].socket_fd = -1;
-
-// 	free(handle->client_conns[client_index].task_list);
-
-// 	handle->num_clients -= 1;
-
-// 	// Log:
-// 	LOG("Deleted connection#%03zu", client_index);
-// }
 
 const size_t TASK_LIST_SIZE = 24;
 
@@ -463,8 +439,6 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 	handle->client_conns[client_index] = (struct Connection)
 	{
 		.socket_fd            = client_socket_fd,
-		.can_read             = 1,
-		.can_write            = 1,
 		.want_task            = 0,
 		.returned_task        = 1,
 		.active_computations  = 0,
@@ -584,34 +558,34 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 	BUG_ON(handle == NULL, "[get_task] in pointer is invalid");
 	BUG_ON(buff == NULL, "[get_task] buff pointer is invalid");
 
-	size_t i = 0;
-	for(; i < handle->num_tasks; i++)
+	for(size_t i = 0; i < handle->num_tasks; i++)
 	{
-		//printf("%d\n", handle->task_manager[i].status);
 		if (handle->task_manager[i].status == NOT_RESOLVED)
 		{
 			handle->task_manager[i].status = RESOLVING;
 			*((size_t*)buff) = i;
-			memcpy(buff + sizeof(size_t), handle->task_manager[i].task,  handle->size_task);
+			memcpy(buff + sizeof(size_t), handle->task_manager[i].task, handle->size_task);
 			handle->client_conns[number].want_task = 0;
 			(handle->client_conns[number].active_computations)++;
-			int j = 0;
-			for(; j < handle->client_conns[number].num_tasks; j++)
+			
+			for (int j = 0; j < handle->client_conns[number].num_tasks; j++)
 			{
-				//printf("%d\n", handle->client_conns[number].task_list[j]);
+
 				if (handle->client_conns[number].task_list[j] == -1)
 				{
 					handle->client_conns[number].task_list[j] = i;
 					break;
 				}
+				
+				BUG_ON((j + 1) == handle->client_conns[number].num_tasks, "[get_task] not enough space in task list");	
 			}
-			BUG_ON(j == handle->client_conns[number].num_tasks, "[get_task] not enough space in task list");
-			break;
+
+			return i;
 		}
 	}
-	if (i == handle->num_tasks)
-		return -1;
-	return i;
+	
+	// Return in case NOT_RESOLVED request found
+	return -1;
 }
 
 // static void drop_unresolved(struct ClusterServerHandle* handle, size_t number)
@@ -710,15 +684,21 @@ static void* server_eventloop(void* arg)
 					char control_byte = handle->client_conns[i].recv_buffer[0];
 
 					if (control_byte == 0)
+					{
+						LOG("Recieved request");
 						handle->client_conns[i].want_task = 1;
+					}
 
 					if (control_byte == 1)
+					{
 						push_ret_val(handle, i, handle->client_conns[i].recv_buffer + 1);
+					}
 
-					if (handle->client_conns[i].active_computations != handle->client_conns[i].num_tasks && handle->client_conns[i].want_task == 1)
-						handle->client_conns[i].can_write = 1;
-
-					update_connection_management(handle, i);
+					if (handle->client_conns[i].active_computations != handle->client_conns[i].num_tasks &&
+						handle->client_conns[i].want_task == 1)
+					{
+						update_connection_management(handle, i, WRITE_ENABLED);
+					}
 				}
 
 				if (pending_events[ev].events & EPOLLOUT)
@@ -726,7 +706,8 @@ static void* server_eventloop(void* arg)
 					char send_buffer[SEND_BUFFER_SIZE];
 
                     int ret = get_task(handle, i, send_buffer);
-					if (ret >= 0)
+                    LOG("Giving out task#%d", ret);
+					if (ret != -1)
 					{
 						int bytes_written = send(handle->client_conns[i].socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 						if (bytes_written != SEND_BUFFER_SIZE)
@@ -742,8 +723,7 @@ static void* server_eventloop(void* arg)
 						}
 					}
 
-					handle->client_conns[i].can_write = 0;
-					update_connection_management(handle, i);
+					update_connection_management(handle, i, WRITE_DISABLED);
 
 					LOG("Sent packets through connection#%03zu", i);
 				}

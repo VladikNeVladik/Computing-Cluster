@@ -22,8 +22,14 @@ struct ret_data
 	double ret_val;
 };
 
-int main()
+int main(int argc, char* argv[])
 {
+	if (argc != 1)
+	{
+		LOG_ERROR("Usage: computation-client");
+		exit(EXIT_FAILURE);
+	}
+
 	// Set log file:
 	set_log_file("log/SERVER-LOG.log");
 
