@@ -64,6 +64,9 @@ struct ClusterClientHandle
 	void* task_buffer;
 	void* ret_buffer;
 
+	size_t requests_to_send;
+	size_t waiting_requests;
+
 	char* recv_buff;
 	size_t bytes_recv;
 
