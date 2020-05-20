@@ -460,6 +460,56 @@ static int cache_line_size()
     return line_size;
 }
 
+static void init_computation_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[init_computation_routine] handle is NULL");
+
+	handle->in_process       = 0;
+	handle->waiting_requests = 0;
+
+	handle->thread_manager = (struct thread_info*) calloc(handle->max_threads, sizeof(struct thread_info));
+	if (handle->thread_manager == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc info mem");
+		exit(EXIT_FAILURE);
+	}
+
+	int cache = cache_line_size();
+	int cpu_size = get_nprocs();
+
+	handle->task_buffer = malloc(handle->max_threads * (handle->task_size + cpu_size));
+	if (handle->task_buffer == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc task buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	handle->ret_buffer = malloc(handle->max_threads * (handle->ret_size + cpu_size));
+	if (handle->ret_buffer == NULL)
+	{
+		LOG_ERROR("[init_cluster_client] alloc ret buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < handle->max_threads; i++)
+	{
+		handle->thread_manager[i].num_cpu     = i % cpu_size;
+		handle->thread_manager[i].num_of_task = 0;
+		handle->thread_manager[i].line_size   = cache;
+		handle->thread_manager[i].data_pack   = handle->task_buffer + i * (handle->task_size + cpu_size);
+		handle->thread_manager[i].ret_pack    = handle->ret_buffer + i * (handle->ret_size + cpu_size);
+	}
+}
+
+static void free_computation_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[free_computation_routine] handle is NULL");
+
+	free(handle->task_buffer);
+	free(handle->ret_buffer);
+	free(handle->thread_manager);
+}
+
 void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*))
 {
 	BUG_ON(num_threads == 0, "[client_compute] number of threads is zero");
@@ -475,62 +525,15 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 	handle.ret_size         = ret_size;
 	handle.task_size        = task_size;
 	handle.thread_func      = thread_func;
-	handle.in_process       = 0;
 	handle.requests_to_send = num_threads;
-	handle.waiting_requests = 0;
 
-	handle.thread_manager = (struct thread_info*) calloc(num_threads, sizeof(struct thread_info));
-	if (handle.thread_manager == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc info mem");
-		exit(EXIT_FAILURE);
-	}
-
-	int cache = cache_line_size();
-	int cpu_size = get_nprocs();
-
-	handle.task_buffer = malloc(num_threads * (task_size + cpu_size));
-	if (handle.task_buffer == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc task buffer");
-		exit(EXIT_FAILURE);
-	}
-
-	handle.ret_buffer = malloc(num_threads * (ret_size + cpu_size));
-	if (handle.ret_buffer == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc ret buffer");
-		exit(EXIT_FAILURE);
-	}
-
-	handle.recv_buff = (char*) calloc(task_size + sizeof(size_t), sizeof(char));
-	if (handle.recv_buff == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc recv buffer");
-		exit(EXIT_FAILURE);
-	}
-	handle.bytes_recv = 0;
-
-
-	for (int i = 0; i < num_threads; i++)
-	{
-		handle.thread_manager[i].num_cpu     = i % cpu_size;
-		handle.thread_manager[i].num_of_task = 0;
-		handle.thread_manager[i].line_size   = cache;
-		handle.thread_manager[i].data_pack   = handle.task_buffer + i * (task_size + cpu_size);
-		handle.thread_manager[i].ret_pack    = handle.ret_buffer + i * (ret_size + cpu_size);
-	}
+	init_computation_routine(&handle);
 
 	init_cluster_client(&handle, num_threads, NULL);
 
-	//while(1);
-
 	stop_cluster_client(&handle);
 
-	free(handle.task_buffer);
-	free(handle.ret_buffer);
-	free(handle.thread_manager);
-	free(handle.recv_buff);
+	free_computation_routine(&handle);
 }
 
 static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
