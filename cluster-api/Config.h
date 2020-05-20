@@ -12,7 +12,7 @@
 //-------------------
 
 #define DISCOVERY_PORT 9787
-#define DISCOVERY_REPEAT_TIME 5 // sec
+#define DISCOVERY_REPEAT_TIME 1 // sec
 #define DISCOVERY_DATAGRAM_SIZE 16
 
 //-----------------
@@ -27,6 +27,7 @@
 
 #define CONNECTION_PORT 9798
 #define LISTEN_CONNECTION_BACKLOG 10
+#define MAX_SIMULTANEOUS_CONNECTIONS 100
 
 
 #endif // COMPUTING_CLUSTER_CONFIG_HPP_INCLUDED

@@ -4,6 +4,12 @@
 
 CCFLAGS += -std=c11 -Werror -Wall -pthread -ggdb
 
+#================#
+# DEFAULT TRAGET #
+#================#
+
+default : compile
+
 #==============#
 # INSTALLATION #
 #==============#
@@ -41,7 +47,7 @@ bin/computation-server.out : integral-computation/computation-server.c obj/clust
 bin/computation-client.out : integral-computation/computation-client.c obj/cluster-client.o
 	gcc ${CCFLAGS} $< -o $@ obj/cluster-client.o obj/logging.o
 
-compile_computation : bin/computation-server.out bin/computation-client.out
+compile : bin/computation-server.out bin/computation-client.out
 	@ printf "\033[1;33mComputation compiled!\033[0m\n"
 
 run_server : bin/computation-server.out

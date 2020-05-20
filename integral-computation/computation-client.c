@@ -29,14 +29,15 @@ int main(int argc, char* argv[])
 
 	if (argc != 2)
 	{
-		LOG_ERROR("[client] num of arguments != 2");
+		LOG_ERROR("Usage: computation-client <number of worker threads> ");
 		exit(EXIT_FAILURE);
 	}
 
-	long int num_thr = give_num(argv[1]);
-	if (num_thr <= 0)
+	char* endptr = argv[1];
+	long long num_thr = strtoll(argv[1], &endptr, 10);
+	if (*argv[1] == '\0' || *endptr != '\0')
 	{
-		LOG_ERROR("[client] error number of threads");
+		LOG_ERROR("Usage: Invalid number of worker threads");
 	 	exit(EXIT_FAILURE);
 	}
 
@@ -45,48 +46,20 @@ int main(int argc, char* argv[])
 	return EXIT_SUCCESS;
 }
 
-long int give_num(const char* str_num)
-{
-    long int in_num = 0;
-    char *end_string;
-
-    errno = 0;
-    in_num = strtoll(str_num, &end_string, 10);
-    if ((errno != 0 && in_num == 0) || (errno == ERANGE && (in_num == LLONG_MAX || in_num == LLONG_MIN))) {
-        printf("Bad string");
-        return -2;
-    }
-
-    if (str_num == end_string) {
-        printf("No number");
-        return -3;
-    }
-
-    if (*end_string != '\0') {
-        printf("Garbage after number");
-        return -4;
-    }
-
-    if (in_num < 0) {
-        printf("i want unsigned num");
-        return -5;
-    }
-
-    return in_num;
-}
-
 double func(double x)
 {
 	return x * x;
 }
 
-void* integral_thread(void* info)
+void* integral_thread(void* arg)
 {
-	BUG_ON(info == NULL, "[integral_thread] bad argument");
+	BUG_ON(arg == NULL, "[integral_thread] Bad argument");
+
+	struct ThreadInfo* info = arg;
 
 	cpu_set_t cpu;
 	pthread_t thread = pthread_self();
-	int num_cpu = ((struct thread_info*)info)->num_cpu;
+	int num_cpu = info->num_cpu;
 
 	if (num_cpu > 0)
 	{
@@ -96,42 +69,46 @@ void* integral_thread(void* info)
 		int ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpu);
 		if (ret < 0)
 		{
-			LOG_ERROR("[integral_thread] set affinity error");
+			LOG_ERROR("[integral_thread] Set affinity error");
 			exit(EXIT_FAILURE);
 		}
 	}
 
-    BUG_ON(((struct thread_info*)info)->data_pack == NULL, "[integral_thread] bad argument");
+    // Computation:
+    struct task_data* data_pack = info->data_pack;
+    BUG_ON(data_pack == NULL, "[integral_thread] Bad argument");
 
-    ////////////////////////////////////////////////////////////////////////////
-    double delta = ((struct task_data*)(((struct thread_info*)info)->data_pack))->step;
-    double end = ((struct task_data*)(((struct thread_info*)info)->data_pack))->end;
-    double start = ((struct task_data*)(((struct thread_info*)info)->data_pack))->start;
-	int cache_size = ((struct thread_info*)info)->line_size;
-	double x = start + delta;
+
+    double delta   = data_pack->step;
+    double end     = data_pack->end;
+    double start   = data_pack->start;
+	int cache_size = info->line_size;
+	double x       = start + delta;
 
     struct ret_data* out = (struct ret_data*) malloc(cache_size * 2); //cache block size
     if (out == NULL)
 	{
-		LOG_ERROR("[integral_thread] return alloc error");
+		LOG_ERROR("[integral_thread] Return alloc error");
 		exit(EXIT_FAILURE);
 	}
 
-	((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum = 0.0;
+	struct ret_data* ret_data = info->ret_pack;
+
+	ret_data->sum = 0.0;
 
     for (; x < end; x += delta)// Check x and delta in asm version
-        ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(x) * delta;
+        ret_data->sum += func(x) * delta;
 
-    ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(start) * delta / 2;
-    ((struct ret_data*)(((struct thread_info*)info)->ret_pack))->sum += func(end) * delta / 2;
-    ////////////////////////////////////////////////////////////////////////////
+    ret_data->sum += func(start) * delta / 2;
+    ret_data->sum += func(end) * delta / 2;
 
-	int sem_fd = ((struct thread_info*)info)->event_fd;
+    // Return results:
+	int sem_fd = info->event_fd;
 	uint64_t val = 1u;
-	int ret = write(sem_fd, &val, sizeof(uint64_t));
+	int ret = write(sem_fd, &val, sizeof(uint64_t)); // What the FUCK, Max?
 	if (ret < 0)
 	{
-		LOG_ERROR("[integral_thread] write fd error");
+		LOG_ERROR("[integral_thread] Write fd error");
 		exit(EXIT_FAILURE);
 	}
 

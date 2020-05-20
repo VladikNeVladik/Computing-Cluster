@@ -22,15 +22,21 @@ struct ret_data
 	double ret_val;
 };
 
-int main()
+int main(int argc, char* argv[])
 {
+	if (argc != 1)
+	{
+		LOG_ERROR("Usage: computation-client");
+		exit(EXIT_FAILURE);
+	}
+
 	// Set log file:
 	set_log_file("log/SERVER-LOG.log");
 
 	struct task_data* task_buff = (struct task_data*) calloc(num_tasks, sizeof(*task_buff));
-	BUG_ON(task_buff == NULL, "[computation-server] alloc tasks_buffer");
+	BUG_ON(task_buff == NULL, "[computation-server] Alloc tasks_buffer");
 	struct ret_data* ret_buff   = (struct ret_data*)  calloc(num_tasks, sizeof(*ret_buff));
-	BUG_ON(ret_buff  == NULL, "[computation-server] alloc tasks_buffer");
+	BUG_ON(ret_buff  == NULL, "[computation-server] Alloc tasks_buffer");
 
 	double diap = (end_point - start_point) / num_tasks;
 	for(size_t i = 0; i < num_tasks; i++)
@@ -43,7 +49,7 @@ int main()
 	int ret = compute_task(num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
 	if (ret < 0)
 	{
-		LOG_ERROR("[compute_task] code error %d", ret);
+		LOG_ERROR("[compute_task] Code error %d", ret);
 		exit(EXIT_FAILURE);
 	}
 
@@ -58,7 +64,7 @@ int main()
 	}
 	free(ret_buff);
 
-	printf("result = %lg\n", result);
+	LOG("Result = %lg", result);
 
 	return EXIT_SUCCESS;
 }

@@ -31,8 +31,10 @@ typedef char bool;
 struct Connection
 {
 	int  socket_fd;
-	bool can_read;
-	bool can_write;
+
+	// Recv buffer:
+	char*  recv_buffer;
+	size_t bytes_recieved;
 };
 
 struct ClusterClientHandle
@@ -59,16 +61,13 @@ struct ClusterClientHandle
 	bool* empty_thread;
 	size_t in_process;
 
-    // thread managment
-	struct thread_info* thread_manager;
+    // Thread managment
+	struct ThreadInfo* thread_manager;
 	void* task_buffer;
 	void* ret_buffer;
 
 	size_t requests_to_send;
 	size_t waiting_requests;
-
-	char* recv_buff;
-	size_t bytes_recv;
 
 	size_t ret_size;
 	size_t task_size;
@@ -76,18 +75,18 @@ struct ClusterClientHandle
 	void* (*thread_func)(void*);
 };
 
-struct thread_info
+struct ThreadInfo
 {
 	pthread_t thread_id;
-	size_t num_of_task;
-    int num_cpu;
-    int line_size;
-    int event_fd;
-    void* data_pack;
-	void* ret_pack;
+	size_t    num_of_task;
+    int       num_cpu;
+    int       line_size;
+    int       event_fd;
+    void*     data_pack;
+	void*     ret_pack;
 };
 
-enum errors
+enum Errors
 {
     E_ERROR = -1,
     E_CACHE_INFO = -2,
