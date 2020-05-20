@@ -483,6 +483,35 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 // Task Management Routine
 //-------------------------
 
+static void init_computation_routine(struct ClusterServerHandle* handle, void* tasks, void* rets)
+{
+	BUG_ON(handle == NULL, "[init_computation_routine] handle pointer is invalid");
+	BUG_ON(tasks == NULL, "[init_computation_routine] tasks pointer is invalid");
+	BUG_ON(rets == NULL, "[init_computation_routine] rets pointer is invalid");
+
+	errno = 0;
+	handle->task_manager = (struct task_info*) calloc(handle->num_tasks, sizeof(struct task_info));
+	if (handle->task_manager == NULL)
+	{
+		LOG_ERROR("[compute_task] alloc task manager");
+		exit(EXIT_FAILURE);
+	}
+
+    for(size_t i = 0; i < handle->num_tasks; i++)
+	{
+		handle->task_manager[i].task   = tasks + i * (handle->size_task);
+		handle->task_manager[i].ret    = rets + i * (handle->size_ret);
+		handle->task_manager[i].status = NOT_RESOLVED; // paranoia
+	}
+}
+
+static void free_computation_routine(struct ClusterServerHandle* handle)
+{
+	BUG_ON(handle == NULL, "[free_computation_routine] handle pointer is invalid");
+
+	free(handle->task_manager);
+}
+
 int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret)
 {
 	BUG_ON(num_tasks == 0, "[compute_task] error tasks number");
@@ -493,31 +522,18 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
 
 	struct ClusterServerHandle handle;
 
-    errno = 0;
-	handle.task_manager = (struct task_info*) calloc(num_tasks, sizeof(struct task_info));
-	if (handle.task_manager == NULL)
-	{
-		LOG_ERROR("[compute_task] alloc task manager");
-		return errno;
-	}
-
-    for(size_t i = 0; i < num_tasks; i++)
-	{
-		handle.task_manager[i].task   = tasks + i * size_task;
-		handle.task_manager[i].ret    = rets + i * size_ret;
-		handle.task_manager[i].status = NOT_RESOLVED; // paranoia
-	}
-
 	handle.num_unresolved = num_tasks;
 	handle.num_tasks      = num_tasks;
 	handle.size_task      = size_task;
 	handle.size_ret       = size_ret;
 
+	init_computation_routine(&handle, tasks, rets);
+
 	init_cluster_server(&handle);
 
-	//while(1);
-
 	stop_cluster_server(&handle);
+
+	free_computation_routine(&handle);
 
 	return 0;
 }
