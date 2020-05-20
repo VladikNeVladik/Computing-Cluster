@@ -468,6 +468,56 @@ static int cache_line_size()
     return line_size;
 }
 
+static void init_computation_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[init_computation_routine] handle is NULL");
+
+	handle->in_process       = 0;
+	handle->waiting_requests = 0;
+
+	handle->thread_manager = (struct thread_info*) calloc(handle->max_threads, sizeof(struct thread_info));
+	if (handle->thread_manager == NULL)
+	{
+		LOG_ERROR("[init_computation_routine] alloc info mem");
+		exit(EXIT_FAILURE);
+	}
+
+	int cache = cache_line_size();
+	int cpu_size = get_nprocs();
+
+	handle->task_buffer = malloc(handle->max_threads * (handle->task_size + cpu_size));
+	if (handle->task_buffer == NULL)
+	{
+		LOG_ERROR("[init_computation_routine] alloc task buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	handle->ret_buffer = malloc(handle->max_threads * (handle->ret_size + cpu_size));
+	if (handle->ret_buffer == NULL)
+	{
+		LOG_ERROR("[init_computation_routine] alloc ret buffer");
+		exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < handle->max_threads; i++)
+	{
+		handle->thread_manager[i].num_cpu     = i % cpu_size;
+		handle->thread_manager[i].num_of_task = 0;
+		handle->thread_manager[i].line_size   = cache;
+		handle->thread_manager[i].data_pack   = handle->task_buffer + i * (handle->task_size + cpu_size);
+		handle->thread_manager[i].ret_pack    = handle->ret_buffer + i * (handle->ret_size + cpu_size);
+	}
+}
+
+static void free_computation_routine(struct ClusterClientHandle* handle)
+{
+	BUG_ON(handle == NULL, "[free_computation_routine] handle is NULL");
+
+	free(handle->task_buffer);
+	free(handle->ret_buffer);
+	free(handle->thread_manager);
+}
+
 void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*))
 {
 	BUG_ON(num_threads == 0, "[client_compute] number of threads is zero");
@@ -477,54 +527,21 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 
 	struct ClusterClientHandle handle;
 
-	handle.max_threads     = num_threads;
-	handle.local_discovery = (master_host == NULL);
-	handle.server_hostname = master_host;
-	handle.ret_size        = ret_size;
-	handle.task_size       = task_size;
-	handle.thread_func     = thread_func;
-	handle.in_process      = 0;
+	handle.max_threads      = num_threads;
+	handle.local_discovery  = (master_host == NULL);
+	handle.server_hostname  = master_host;
+	handle.ret_size         = ret_size;
+	handle.task_size        = task_size;
+	handle.thread_func      = thread_func;
+	handle.requests_to_send = num_threads;
 
-	handle.thread_manager = (struct ThreadInfo*) calloc(num_threads, sizeof(struct ThreadInfo));
-	if (handle.thread_manager == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc info mem");
-		exit(EXIT_FAILURE);
-	}
-
-	int cache = cache_line_size();
-	int cpu_size = get_nprocs();
-
-	handle.task_buffer = malloc(num_threads * (task_size + cpu_size));
-	if (handle.task_buffer == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc task buffer");
-		exit(EXIT_FAILURE);
-	}
-
-	handle.ret_buffer = malloc(num_threads * (ret_size + cpu_size));
-	if (handle.ret_buffer == NULL)
-	{
-		LOG_ERROR("[init_cluster_client] alloc ret buffer");
-		exit(EXIT_FAILURE);
-	}
-
-	for (int i = 0; i < num_threads; i++)
-	{
-		handle.thread_manager[i].num_cpu     = i % cpu_size;
-		handle.thread_manager[i].num_of_task = 0;
-		handle.thread_manager[i].line_size   = cache;
-		handle.thread_manager[i].data_pack   = handle.task_buffer + i * (task_size + cpu_size);
-		handle.thread_manager[i].ret_pack    = handle.ret_buffer + i * (ret_size + cpu_size);
-	}
+	init_computation_routine(&handle);
 
 	init_cluster_client(&handle, num_threads, NULL);
 
 	stop_cluster_client(&handle);
 
-	free(handle.task_buffer);
-	free(handle.ret_buffer);
-	free(handle.thread_manager);
+	free_computation_routine(&handle);
 }
 
 static void start_thread(struct ClusterClientHandle* handle, size_t num, char* buff)
@@ -533,7 +550,6 @@ static void start_thread(struct ClusterClientHandle* handle, size_t num, char* b
 	BUG_ON(buff == NULL, "[start_thread] recv buff is NULL");
 
 	handle->thread_manager[num].num_of_task = *((size_t*)buff);
-	LOG("[in_handle] Recieved packet # %zu", handle->thread_manager[num].num_of_task);
 
 	buff += sizeof(size_t);
     memcpy(handle->thread_manager[num].data_pack, buff, handle->task_size);
@@ -625,6 +641,8 @@ static void in_handler(struct ClusterClientHandle* handle)
 
 	handle->server_conn.bytes_recieved = 0;
 
+	LOG("[in_handle] Recv packet # %zu", *(size_t*)(handle->recv_buff));
+
 	for (size_t i = 0; i < handle->max_threads; i++)
 	{
 		if (handle->empty_thread[i] == 1)
@@ -644,6 +662,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 
 	size_t SEND_BUFFER_SIZE = sizeof(size_t) + 1 + handle->ret_size;
 
+	size_t sent_returns = 0;
 	for(size_t i = 0; i < handle->max_threads; i++)
 	{
 		if (handle->computations_ready[i] == 1)
@@ -658,33 +677,33 @@ static void out_handler(struct ClusterClientHandle* handle)
 				exit(EXIT_FAILURE);
 			}
 
+			sent_returns++;
 			handle->computations_ready[i] = 0;
+			(handle->requests_to_send)++;
 
-			LOG("Sent packet to server");
+			LOG("[CLUSTER-CLIENT] Sent result %zu to server", *(size_t*)(send_buffer + 1));
 			update_connection_management(handle, WRITE_ENABLED);
-			return;
 		}
 	}
+	if (sent_returns != 0)
+		return;
 
-	for (size_t i = 0; i < handle->max_threads; ++i)
+	for(; handle->requests_to_send > 0; (handle->requests_to_send)--)
 	{
-		if (handle->empty_thread[i] == 1)
+		char send_buffer[SEND_BUFFER_SIZE];
+		send_buffer[0] = 0;
+    
+		int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
+		if (bytes_written != SEND_BUFFER_SIZE)
 		{
-			char send_buffer[SEND_BUFFER_SIZE];
-			send_buffer[0] = 0;
-
-			int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
-			if (bytes_written != SEND_BUFFER_SIZE)
-			{
-				LOG_ERROR("[client_eventloop] Unable to request to server");
-				exit(EXIT_FAILURE);
-			}
-
-			LOG("Sent request to server");
-			update_connection_management(handle, WRITE_DISABLED);
-			return;
+			LOG_ERROR("[client_eventloop] Unable to request to server");
+			exit(EXIT_FAILURE);
 		}
+
+		LOG("[CLUSTER-CLIENT] Sent request to server");
 	}
+
+	update_connection_management(handle, WRITE_DISABLED);
 }
 
 //------------------
