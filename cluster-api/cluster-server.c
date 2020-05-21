@@ -22,8 +22,6 @@
 // TCP keepalive options:
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-// Getaddrinfo:
-#include <netdb.h>
 // Multithreading:
 #include <pthread.h>
 // Read/Write:
@@ -45,13 +43,11 @@
 
 static void init_discovery_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[init_discovery_routine] Nullptr argument");
-
-	// Acquire discovery socket:
-	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	// Acquire discovery-in socket:
+	int sock_fd = socket(AF_INET, SOCK_DGRAM|SOCK_NONBLOCK, 0);
 	if (sock_fd == -1)
 	{
-		LOG_ERROR("[init_discovery_routine] Unable to create socket");
+		LOG_ERROR("[init_discovery_routine] Unable to create discovery-in socket");
 		exit(EXIT_FAILURE);
 	}
 
@@ -78,55 +74,21 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 
 	if (connect(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
 	{
-		LOG_ERROR("[init_discovery_routine] Unable to connect to broadcast address");
+		LOG_ERROR("[init_discovery_routine] Unable to bind() to broadcast address");
 		exit(EXIT_FAILURE);
 	}
 
 	handle->discovery_socket_fd = sock_fd;
-
-	// Set timer:
-	int timer_fd = timerfd_create(CLOCK_BOOTTIME, TFD_NONBLOCK|TFD_CLOEXEC);
-	if (timer_fd == -1)
-	{
-		LOG_ERROR("[init_discovery_routine] Unable to create timer file descriptor");
-		exit(EXIT_FAILURE);
-	}
-
-	struct itimerspec timer_config =
-	{
-		.it_interval = {DISCOVERY_REPEAT_TIME, 0},
-		.it_value    = {1, 0}
-	};
-	if (timerfd_settime(timer_fd, 0, &timer_config, NULL) == -1)
-	{
-		LOG_ERROR("[init_discovery_routine] Unable to configure a timer file descriptor");
-		exit(EXIT_FAILURE);
-	}
-
-	handle->discovery_timer_fd = timer_fd;
-
-	// Log:
-	LOG("Discovery routine initialized");
+	handle->broadcast_addr = broadcast_addr;
 }
 
 static void free_discovery_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[free_discovery_routine] Nullptr argument");
-
 	if (close(handle->discovery_socket_fd) == -1)
 	{
 		LOG_ERROR("[free_discovery_routine] Unable to close socket");
 		exit(EXIT_FAILURE);
 	}
-
-	if (close(handle->discovery_timer_fd) == -1)
-	{
-		LOG_ERROR("[free_discovery_routine] Unable to close timer-assosiated file descriptor");
-		exit(EXIT_FAILURE);
-	}
-
-	handle->discovery_socket_fd = -1;
-	handle->discovery_timer_fd  = -1;
 
 	// Log:
 	LOG("Discovery routine resources freed");
@@ -134,47 +96,56 @@ static void free_discovery_routine(struct ClusterServerHandle* handle)
 
 void start_discovery_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[start_discovery_routine] Nullptr argument");
-
 	epoll_data_t event_data =
 	{
-		.fd = handle->discovery_timer_fd
+		.fd = handle->discovery_socket_fd
 	};
 	struct epoll_event event_config =
 	{
 		.events = EPOLLIN,
 		.data   = event_data
 	};
-	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->discovery_timer_fd, &event_config) == -1)
+	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->discovery_socket_fd, &event_config) == -1)
 	{
 		LOG_ERROR("[start_discovery_routine] Unable to register file descriptor for epoll");
 		exit(EXIT_FAILURE);
 	}
 
 	// Log:
-	LOG("Discovery routine started");
+	LOG("Discovery routine running");
 }
 
-void perform_discovery_send(struct ClusterServerHandle* handle)
+static void answer_clients_discovery_datagram(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[perform_discovery_send] Nullptr argument");
+	char buffer[CLIENTS_DISCOVERY_DATAGRAM_SIZE];
 
-	char send_buffer[DISCOVERY_DATAGRAM_SIZE];
-	int bytes_written = send(handle->discovery_socket_fd, send_buffer, DISCOVERY_DATAGRAM_SIZE, MSG_NOSIGNAL);
-	if (bytes_written == -1)
+	int bytes_read;
+	do
 	{
-		LOG_ERROR("Unable to broadcast discovery datagram");
-		exit(EXIT_FAILURE);
-	}
+		bytes_read = recv(handle->discovery_socket_fd, buffer, CLIENTS_DISCOVERY_DATAGRAM_SIZE, 0);
+		if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
+		{
+			LOG_ERROR("[catch_clients_discovery_datagram] Unable to recieve discovery datagram");
+			exit(EXIT_FAILURE);
+		}
 
-	uint64_t timer_expirations = 0;
-	if (read(handle->discovery_timer_fd, &timer_expirations, 8) == -1)
-	{
-		LOG_ERROR("[perform_discovery_send] Unable to perform read on timer file descriptor");
-		exit(EXIT_FAILURE);
-	}
+		buffer[CLIENTS_DISCOVERY_DATAGRAM_SIZE - 1] = '\0';
 
-	LOG("Sent discovery datagram");
+		if (bytes_read == CLIENTS_DISCOVERY_DATAGRAM_SIZE && strcmp(buffer, CLIENTS_DISCOVERY_DATAGRAM) == 0)
+		{
+			// Send a broadcast "Here I am" datagram:
+
+			if (sendto(handle->discovery_socket_fd, SERVERS_DISCOVERY_DATAGRAM, SERVERS_DISCOVERY_DATAGRAM_SIZE,
+			           MSG_NOSIGNAL, &handle->broadcast_addr, sizeof(handle->broadcast_addr)) == -1)
+			{
+				LOG_ERROR("[catch_clients_discovery_datagram] Unable to broadcast discovery datagram");
+				exit(EXIT_FAILURE);
+			}
+
+			return;
+		}
+	}
+	while (bytes_read != -1);
 }
 
 //-----------------------
@@ -183,8 +154,6 @@ void perform_discovery_send(struct ClusterServerHandle* handle)
 
 static void init_connection_management_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[init_connection_management_routine] Nullptr argument");
-
 	handle->max_clients = MAX_SIMULTANEOUS_CONNECTIONS;
 	
 	// Create connection table:
@@ -197,7 +166,7 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 
 	for (size_t i = 0; i < handle->max_clients; ++i)
 	{
-		handle->client_conns[i].recv_buffer = (char*) malloc(handle->size_ret + sizeof(size_t) + sizeof(char));
+		handle->client_conns[i].recv_buffer = (char*) malloc(handle->size_ret + sizeof(uint32_t) + sizeof(uint8_t));
 		if (handle->client_conns[i].recv_buffer == NULL)
 		{
 			LOG_ERROR("Unable to allocate memory for recv-buffer");
@@ -271,9 +240,11 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 
 static void free_connection_management_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[free_connection_management_routine] Nullptr argument");
-
-	close(handle->accept_socket_fd);
+	if (close(handle->accept_socket_fd) == -1)
+	{
+		LOG_ERROR("[free_connection_management_routine] Unable to close accept socket");
+		exit(EXIT_FAILURE);
+	}
 
 	for (size_t i = 0; i < handle->max_clients; ++i)
 	{
@@ -303,8 +274,6 @@ static void free_connection_management_routine(struct ClusterServerHandle* handl
 
 static void start_connection_management_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[start_connection_management_routine] Nullptr argument");
-
 	// Add accept-socket file descriptor to epoll:
 	epoll_data_t event_data =
 	{
@@ -327,18 +296,8 @@ static void start_connection_management_routine(struct ClusterServerHandle* hand
 
 static void pause_connection_management_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[start_connection_management_routine] Nullptr argument");
-
-	// Add accept-socket file descriptor to epoll:
-	epoll_data_t event_data =
-	{
-		.fd = handle->accept_socket_fd
-	};
-	struct epoll_event event_config =
-	{
-		.events = EPOLLIN,
-		.data   = event_data
-	};
+	// Delete accept-socket file descriptor from epoll:
+	struct epoll_event event_config;
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->accept_socket_fd, &event_config) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to delete file descriptor from epoll");
@@ -357,8 +316,6 @@ enum
 
 static void update_connection_management(struct ClusterServerHandle* handle, size_t client_index, bool can_write)
 {
-	BUG_ON(handle == NULL, "[start_conn_in_management] Nullptr argument");
-
 	// Add socket to epoll:
 	epoll_data_t event_data =
 	{
@@ -374,17 +331,12 @@ static void update_connection_management(struct ClusterServerHandle* handle, siz
 		LOG_ERROR("[start_connection_management_routine] Unable to update connection#%zu in epoll", client_index);
 		exit(EXIT_FAILURE);
 	}
-
-	// Log:
-	// LOG("Write on connection#%zu %s", client_index, can_write ? "enabled" : "disabled");
 }
 
 const size_t TASK_LIST_SIZE = 24;
 
 static void accept_incoming_connection_request(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[accept_incoming_connection_request] Nullptr argument");
-
 	// Accept the request:
 	int client_socket_fd = accept4(handle->accept_socket_fd, NULL, NULL, SOCK_NONBLOCK);
 	if (client_socket_fd == -1)
@@ -450,7 +402,7 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 	{
 		.socket_fd            = client_socket_fd,
 		.want_task            = 0,
-		.returned_task        = 0,
+		.returned_task        = 1,
 		.active_computations  = 0,
 		.num_tasks            = TASK_LIST_SIZE,
 		.recv_buffer          = already_allocated_buffer,
@@ -485,42 +437,45 @@ static void accept_incoming_connection_request(struct ClusterServerHandle* handl
 	}
 
 	// Log:
-	LOG("Incoming connection request accepted");
-	LOG("Connection#%zu now active", client_index);
+	LOG("Accepted connection request. Connection#%zu now active", client_index);
 }
 
 //-------------------------
 // Task Management Routine
 //-------------------------
 
-static void init_computation_routine(struct ClusterServerHandle* handle, void* tasks, void* rets)
+static void init_task_management_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[init_computation_routine] handle pointer is invalid");
-	BUG_ON(tasks == NULL, "[init_computation_routine] tasks pointer is invalid");
-	BUG_ON(rets == NULL, "[init_computation_routine] rets pointer is invalid");
-
-	errno = 0;
-	handle->task_manager = (struct task_info*) calloc(handle->num_tasks, sizeof(struct task_info));
+	handle->task_manager = (struct TaskInfo*) calloc(handle->num_tasks, sizeof(struct TaskInfo));
 	if (handle->task_manager == NULL)
 	{
-		LOG_ERROR("[init_computation_routine] alloc task manager");
+		LOG_ERROR("[init_task_management_routine] alloc task manager");
 		exit(EXIT_FAILURE);
 	}
 
     for(size_t i = 0; i < handle->num_tasks; i++)
 	{
-		handle->task_manager[i].task   = tasks + i * (handle->size_task);
-		handle->task_manager[i].ret    = rets + i * (handle->size_ret);
-		handle->task_manager[i].status = NOT_RESOLVED; // paranoia
+		handle->task_manager[i].task   = handle->user_tasks + i * (handle->size_task);
+		handle->task_manager[i].ret    = handle->user_rets  + i * (handle->size_ret);
+		handle->task_manager[i].status = NOT_RESOLVED;
 	}
+
+	handle->num_unresolved = handle->num_tasks;
+
+	// Log:
+	LOG("Task management routine initialised");
 }
 
-static void free_computation_routine(struct ClusterServerHandle* handle)
+static void free_task_management_routine(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[free_computation_routine] handle pointer is invalid");
-
 	free(handle->task_manager);
+
+	// Log:
+	LOG("Task management routine resources freed");
 }
+
+void init_cluster_server(struct ClusterServerHandle* handle);
+void stop_cluster_server(struct ClusterServerHandle* handle);
 
 int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret)
 {
@@ -528,29 +483,25 @@ int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, si
 	BUG_ON(tasks == NULL,  "[compute_task] Task buffer is nullptr");
 	BUG_ON(size_task == 0, "[compute_task] Invalid task size");
 	BUG_ON(rets == NULL,   "[compute_task] Ret buffer is nullptr");
-	BUG_ON(size_ret ==  0, "[compute_task] Invalid ret size");
+	BUG_ON(size_ret == 0,  "[compute_task] Invalid ret size");
 
 	struct ClusterServerHandle handle;
 
-	handle.num_unresolved = num_tasks;
-	handle.num_tasks      = num_tasks;
-	handle.size_task      = size_task;
-	handle.size_ret       = size_ret;
-
-	init_computation_routine(&handle, tasks, rets);
+	handle.num_tasks  = num_tasks;
+	handle.user_tasks = tasks;
+	handle.size_task  = size_task;
+	handle.user_rets  = rets;
+	handle.size_ret   = size_ret;
 
 	init_cluster_server(&handle);
 
 	stop_cluster_server(&handle);
-
-	free_computation_routine(&handle);
 
 	return 0;
 }
 
 static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char* buff)
 {
-	BUG_ON(handle == NULL, "[push_ret_val] Pointer is invalid");
 	BUG_ON(buff == NULL,   "[push_ret_val] Buffer pointer is invalid");
 
     size_t num_ret_packet = *((size_t*)buff);
@@ -581,7 +532,6 @@ static void push_ret_val(struct ClusterServerHandle* handle, size_t number, char
 
 static int get_task(struct ClusterServerHandle* handle, size_t number, char* buff)
 {
-	BUG_ON(handle == NULL, "[get_task] in pointer is invalid");
 	BUG_ON(buff == NULL, "[get_task] buff pointer is invalid");
 
 	for(size_t i = 0; i < handle->num_tasks; i++)
@@ -610,14 +560,12 @@ static int get_task(struct ClusterServerHandle* handle, size_t number, char* buf
 		}
 	}
 	
-	// Return in case NOT_RESOLVED request found
-	return -1;
+	// Return in case NOT_RESOLVED request not found
+	BUG_ON(1, "[get_task] Trying to get results of taks while there are none");
 }
 
 static void drop_unresolved(struct ClusterServerHandle* handle, size_t conn_i)
 {
-	BUG_ON(handle == NULL, "[drop_unresolved] in pointer is invalid");
-
 	for(int i = 0; i < handle->client_conns[conn_i].num_tasks; i++)
 	{
 		int task_i = handle->client_conns[conn_i].task_list[i];
@@ -635,8 +583,6 @@ static void drop_unresolved(struct ClusterServerHandle* handle, size_t conn_i)
 
 static void delete_connection(struct ClusterServerHandle* handle, size_t client_i)
 {
-	BUG_ON(handle == NULL, "[delete_connection] Nullptr argument");
-
 	// Start accepting incoming connections:
 	if (handle->num_clients == handle->max_clients)
 	{
@@ -673,7 +619,6 @@ static void delete_connection(struct ClusterServerHandle* handle, size_t client_
 static void* server_eventloop(void* arg)
 {
 	struct ClusterServerHandle* handle = arg;
-	BUG_ON(handle == NULL, "[server_eventloop] Nullptr argument");
 
 	const int MAX_EVENTS = 16;
 	int RECV_BUFFER_SIZE = handle->size_ret + sizeof(size_t) + sizeof(char);
@@ -691,10 +636,10 @@ static void* server_eventloop(void* arg)
 
 		for (int ev = 0; ev < num_events; ++ev)
 		{
-			// Sendout discovery datagram:
-			if (pending_events[ev].data.fd == handle->discovery_timer_fd)
+			// Perform discovery:
+			if (pending_events[ev].data.fd == handle->discovery_socket_fd && pending_events[ev].events & EPOLLIN)
 			{
-				perform_discovery_send(handle);
+				answer_clients_discovery_datagram(handle);
 			}
 
 			// Accept incoming connection request:
@@ -781,8 +726,6 @@ static void* server_eventloop(void* arg)
 					}
 
 					update_connection_management(handle, i, WRITE_DISABLED);
-
-					// LOG("Sent packets through connection#%zu", i);
 				}
 			}
 		}
@@ -800,11 +743,11 @@ static void* server_eventloop(void* arg)
 
 void init_cluster_server(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[init_cluster_server] Nullptr argument");
-
 	// Init subroutines:
 	init_discovery_routine            (handle);
 	init_connection_management_routine(handle);
+
+	init_task_management_routine(handle);
 
 	// Create epoll instance:
 	handle->epoll_fd = epoll_create1(0);
@@ -834,8 +777,6 @@ void init_cluster_server(struct ClusterServerHandle* handle)
 
 void stop_cluster_server(struct ClusterServerHandle* handle)
 {
-	BUG_ON(handle == NULL, "[stop_cluster_server] Nullptr argument");
-
 	int err = pthread_join(handle->eventloop_thr_id, NULL);
 	if (err != 0)
 	{
@@ -855,6 +796,8 @@ void stop_cluster_server(struct ClusterServerHandle* handle)
 	// Free resources allocated for subroutines:
 	free_discovery_routine            (handle);
 	free_connection_management_routine(handle);
+
+	free_task_management_routine(handle);
 
 	// Log:
 	LOG("Cluster-server stopped");

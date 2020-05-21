@@ -37,59 +37,25 @@ struct Connection
 	size_t bytes_recieved;
 };
 
-struct ClusterClientHandle
-{
-	// Eventloop:
-	int epoll_fd;
-	pthread_t eventloop_thr_id;
-
-	// Server discovery:
-	bool local_discovery;
-	const char* server_hostname;
-	struct sockaddr_in server_addr;
-
-	// Server tracking:
-	int server_tracking_socket_fd;
-	int server_tracking_timeout_fd;
-
-	// Connection management:
-	struct Connection server_conn;
-
-	// Computation task management:
-	size_t max_threads;
-	bool* computations_ready;
-	bool* empty_thread;
-	size_t in_process;
-
-    // Thread managment
-	struct ThreadInfo* thread_manager;
-	void* task_buffer;
-	void* ret_buffer;
-
-	size_t requests_to_send;
-	size_t waiting_requests;
-
-	size_t ret_size;
-	size_t task_size;
-};
-
 struct ComputeInfo
 {
 	void* data_pack;
 	void* ret_pack;
+	void* (*thread_func)(void*);
 };
 
 struct ThreadInfo
 {
-	pthread_t thread_id;
-	size_t    num_of_task;
-    int       num_cpu;
-    int       line_size;
-    int       event_fd;
+	bool empty;
 
 	struct ComputeInfo in_args;
+	
+	pthread_t thread_id;
+	cpu_set_t cpu;
+	uint32_t  num_of_task;
 
-	void*     (*thread_func)(void*);
+    int  event_fd;
+	bool ready;
 };
 
 enum Errors
@@ -99,16 +65,46 @@ enum Errors
     E_BADARGS = -3,
 };
 
-//-------------------------------------
-// Initialization and deinitialization
-//-------------------------------------
+struct ClusterClientHandle
+{
+	// Eventloop:
+	int epoll_fd;
+	pthread_t eventloop_thr_id;
+	
+	// Server discovery:
+	const char* server_hostname;
+	bool local_discovery;
 
-void init_cluster_client(struct ClusterClientHandle* handle, size_t max_threads, const char* master_host);
-void stop_cluster_client(struct ClusterClientHandle* handle);
+	int discovery_socket_fd;
+	int discovery_timer_fd;
 
-//-----------------------------
-// Computation task management
-//-----------------------------
+	struct sockaddr_in server_addr;
+	
+	// Connection management:
+	struct Connection server_conn;
+
+	// Task management:
+	size_t requests_to_send;
+	size_t in_process;
+	
+	struct ThreadInfo* thread_manager;
+	size_t max_threads;
+	
+	void*  task_buffer;
+	size_t task_size;
+	
+	void*  ret_buffer;
+	size_t ret_size;
+
+	// Task computation:
+	int max_cpu;
+    int cache_line_size;
+	void* (*thread_func)(void*);
+};
+
+//-------------
+// Computation
+//-------------
 
 void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*));
 

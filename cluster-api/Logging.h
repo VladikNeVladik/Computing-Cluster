@@ -75,7 +75,7 @@ __attribute__((unused)) static int acquire_log_fd(const char* input_format)
 		dprintf(log_fd, "[LOG %s:%06ld] Opened log file %s\n", time_str_buf, cur_time.tv_usec, LOG_FILE);
 	}
 	
-	if (strcmp(input_format, "Closed log file") == 0 && log_fd != -1)
+	if (input_format != NULL && input_format[0] == '@' && log_fd != -1)
 	{
 		dprintf(log_fd, "[LOG %s:%06ld] Closed log file %s\n", time_str_buf, cur_time.tv_usec, LOG_FILE);
 		close(log_fd);
