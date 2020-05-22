@@ -65,21 +65,28 @@ static void init_discovery_routine(struct ClusterServerHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
-	struct sockaddr_in broadcast_addr =
+	struct sockaddr_in server_addr =
 	{
 		.sin_family      = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port        = htons(DISCOVERY_PORT)
+		.sin_port        = htons(DISCOVERY_SERVER_PORT)
 	};
 
-	if (connect(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
+	// Performed to recieve datagrams from clients:
+	if (bind(sock_fd, &server_addr, sizeof(server_addr)) == -1)
 	{
-		LOG_ERROR("[init_discovery_routine] Unable to bind() to broadcast address");
+		LOG_ERROR("[init_discovery_routine] Unable to bind()");
 		exit(EXIT_FAILURE);
 	}
 
+	handle->broadcast_addr = (struct sockaddr_in)
+	{
+		.sin_family      = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+		.sin_port        = htons(DISCOVERY_CLIENT_PORT)
+	};
+
 	handle->discovery_socket_fd = sock_fd;
-	handle->broadcast_addr = broadcast_addr;
 }
 
 static void free_discovery_routine(struct ClusterServerHandle* handle)
@@ -133,14 +140,14 @@ static void answer_clients_discovery_datagram(struct ClusterServerHandle* handle
 
 		if (bytes_read == CLIENTS_DISCOVERY_DATAGRAM_SIZE && strcmp(buffer, CLIENTS_DISCOVERY_DATAGRAM) == 0)
 		{
-			// Send a broadcast "Here I am" datagram:
-
 			if (sendto(handle->discovery_socket_fd, SERVERS_DISCOVERY_DATAGRAM, SERVERS_DISCOVERY_DATAGRAM_SIZE,
 			           MSG_NOSIGNAL, &handle->broadcast_addr, sizeof(handle->broadcast_addr)) == -1)
 			{
 				LOG_ERROR("[catch_clients_discovery_datagram] Unable to broadcast discovery datagram");
 				exit(EXIT_FAILURE);
 			}
+
+			LOG("Replied to discovery with \"Here I Am\" broadcast");
 
 			return;
 		}

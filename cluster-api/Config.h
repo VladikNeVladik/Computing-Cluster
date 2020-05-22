@@ -13,8 +13,9 @@
 // Discovery process 
 //-------------------
 
-const int DISCOVERY_PORT            = 9798;
-const int DISCOVERY_REPEAT_INTERVAL =    2; // sec
+const int DISCOVERY_SERVER_PORT = 9798;
+const int DISCOVERY_CLIENT_PORT = 9799;
+const int DISCOVERY_REPEAT_INTERVAL  =    2; // sec
 
 const char   CLIENTS_DISCOVERY_DATAGRAM[]    = "Where are you, CLUSTER-SERVER!";
 const size_t CLIENTS_DISCOVERY_DATAGRAM_SIZE = sizeof(CLIENTS_DISCOVERY_DATAGRAM)/sizeof(char);

@@ -78,10 +78,11 @@ struct ClusterClientHandle
 	int discovery_socket_fd;
 	int discovery_timer_fd;
 
-	struct sockaddr_in server_addr;
-	
+	struct sockaddr_in broadcast_addr;
+
 	// Connection management:
 	struct Connection server_conn;
+	struct sockaddr_in server_addr;
 
 	// Task management:
 	size_t requests_to_send;

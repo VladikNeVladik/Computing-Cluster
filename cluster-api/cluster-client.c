@@ -67,18 +67,33 @@ static void init_discovery_routine(struct ClusterClientHandle* handle)
 		exit(EXIT_FAILURE);
 	}
 
-	struct sockaddr_in broadcast_addr =
+	struct sockaddr_in client_addr =
 	{
 		.sin_family      = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
-		.sin_port        = htons(DISCOVERY_PORT)
+		.sin_port        = htons(DISCOVERY_CLIENT_PORT)
 	};
-
-	if (connect(sock_fd, &broadcast_addr, sizeof(broadcast_addr)) == -1)
+	
+	// Needed to recieve datagrams from server:
+	if (bind(sock_fd, &client_addr, sizeof(client_addr)) == -1)
 	{
-		LOG_ERROR("[init_discovery_routine] Unable to connect()");
+		LOG_ERROR("[init_discovery_routine] Unable to bind()");
 		exit(EXIT_FAILURE);
 	}
+
+	handle->broadcast_addr = (struct sockaddr_in)
+	{
+		.sin_family      = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_BROADCAST),
+		.sin_port        = htons(DISCOVERY_SERVER_PORT)
+	};
+
+	// Performed to be able to send datagrams to server:
+	// if (connect(sock_fd, &server_addr, sizeof(server_addr)) == -1)
+	// {
+	// 	LOG_ERROR("[init_discovery_routine] Unable to connect()");
+	// 	exit(EXIT_FAILURE);
+	// }
 
 	handle->discovery_socket_fd = sock_fd;
 
@@ -179,7 +194,7 @@ static void pause_discovery_routine(struct ClusterClientHandle* handle)
 	struct epoll_event event_config;
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_DEL, handle->discovery_socket_fd, &event_config) == -1)
 	{
-		LOG_ERROR("[pause_discovery_routine] Unable to delet socket file descriptor from epoll");
+		LOG_ERROR("[pause_discovery_routine] Unable to delete socket file descriptor from epoll");
 		exit(EXIT_FAILURE);
 	}
 
@@ -210,7 +225,8 @@ static void perform_discovery_send(struct ClusterClientHandle* handle)
 {
 	BUG_ON(!handle->local_discovery, "[pause_discovery_routine] Unneeded phase for distant discovery");
 
-	int bytes_written = send(handle->discovery_socket_fd, CLIENTS_DISCOVERY_DATAGRAM, CLIENTS_DISCOVERY_DATAGRAM_SIZE, MSG_NOSIGNAL);
+	int bytes_written = sendto(handle->discovery_socket_fd, CLIENTS_DISCOVERY_DATAGRAM, CLIENTS_DISCOVERY_DATAGRAM_SIZE,
+	                           MSG_NOSIGNAL, &handle->broadcast_addr, sizeof(handle->broadcast_addr));
 	if (bytes_written != CLIENTS_DISCOVERY_DATAGRAM_SIZE)
 	{
 		LOG_ERROR("[perform_discovery_send] Unable to broadcast discovery datagram");
@@ -242,7 +258,7 @@ static void catch_servers_discovery_datagram(struct ClusterClientHandle* handle)
 	do
 	{
 		bytes_read = recvfrom(handle->discovery_socket_fd, buffer, SERVERS_DISCOVERY_DATAGRAM_SIZE,
-		                      0, (struct sockaddr*) &peer_addr, &peer_addr_len);
+		                      0, &peer_addr, &peer_addr_len);
 		if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
 		{
 			LOG_ERROR("[catch_servers_discovery_datagram] Unable to recieve discovery datagram (errno = %d)", errno);
@@ -267,7 +283,7 @@ static void catch_servers_discovery_datagram(struct ClusterClientHandle* handle)
 				exit(EXIT_FAILURE);
 			}
 
-			LOG("Automatically discovered cluster-server at %s:%s", server_host, server_port);
+			LOG("Discovered server at %s:%s", server_host, server_port);
 
 			// Connect to server:
 			start_connection_management_routine(handle);
@@ -320,7 +336,7 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	if (handle->local_discovery)
 	{
 		// Acquire connection socket:
-		int sock_fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, IPPROTO_TCP);
+		int sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (sock_fd == -1)
 		{
 			LOG_ERROR("[start_connection_management_routine] Unable to create socket");
@@ -340,7 +356,7 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		struct addrinfo hints;
 		memset(&hints, 0, sizeof(struct addrinfo));
 		hints.ai_family    = AF_INET;
-		hints.ai_socktype  = SOCK_STREAM|SOCK_NONBLOCK;
+		hints.ai_socktype  = SOCK_STREAM;
 		hints.ai_flags     = 0;
 		hints.ai_protocol  = 0;
 		hints.ai_canonname = NULL;
@@ -381,6 +397,13 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		}
 
 		handle->server_conn.socket_fd = sock_fd;
+	}
+
+	// Make socket non-blocking:
+	if (fcntl(handle->server_conn.socket_fd, F_SETFD, O_NONBLOCK) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to switch socket into non-blocking mode");
+		exit(EXIT_FAILURE);
 	}
 
 	// Ask socket to automatically detect disconnection:
@@ -805,7 +828,7 @@ static void out_handler(struct ClusterClientHandle* handle)
 		int bytes_written = send(handle->server_conn.socket_fd, send_buffer, SEND_BUFFER_SIZE, MSG_NOSIGNAL);
 		if (bytes_written != SEND_BUFFER_SIZE)
 		{
-			LOG_ERROR("[client_eventloop] Unable to request to server");
+			LOG_ERROR("[out_handler] Unable to request to server");
 			exit(EXIT_FAILURE);
 		}
 
