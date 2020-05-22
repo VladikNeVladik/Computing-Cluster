@@ -37,5 +37,26 @@ const int TCP_KEEPALIVE_IDLE_TIME  = 1; // sec
 const int TCP_KEEPALIVE_INTERVAL   = 1; // sec
 const int TCP_KEEPALIVE_NUM_PROBES = 4;
 
+//-----------------------
+// Task Management 
+//-----------------------
+
+const size_t MAX_TASKS_PER_CLIENT = 16; 
+
+enum
+{
+	ERR_CONN_BROKEN,
+	ERR_NOT_READY,
+	CMD_REQUEST_FOR_DATA,
+	CMD_RESULT,
+	CMD_TASK,
+	CMD_DISCONNECT
+};
+
+struct RequestHeader
+{
+	uint8_t  cmd;
+	uint32_t task_id;
+} __attribute__((packed));
 
 #endif // COMPUTING_CLUSTER_CONFIG_HPP_INCLUDED

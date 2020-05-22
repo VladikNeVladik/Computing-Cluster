@@ -29,18 +29,19 @@ typedef char bool;
 struct Connection
 {
 	int  socket_fd;
-	bool want_task;
-
-	// Task managment:
-	bool   returned_task;
-	size_t active_computations;
-
-	int* task_list;
-	size_t num_tasks;
 
 	// Recv buffer:
 	char*  recv_buffer;
 	size_t bytes_recieved;
+
+	// Send operation:
+	uint32_t now_sending_task_i;
+
+	// Task managment:
+	size_t requested_tasks;
+	size_t active_computations;
+
+	uint32_t* task_list;
 };
 
 struct TaskInfo
@@ -69,14 +70,15 @@ struct ClusterServerHandle
 	// Task management:
 	struct TaskInfo* task_manager;
 	size_t num_unresolved;
+	size_t min_ungiven_task;
 
 	// Task computation:
 	char* user_tasks; // Those two are not allocated, but rest in the userland
 	char* user_rets;
 
 	size_t num_tasks;
-	size_t size_task;
-	size_t size_ret;
+	size_t task_size;
+	size_t ret_size;
 };
 
 enum

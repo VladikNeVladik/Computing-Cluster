@@ -52,10 +52,10 @@ struct ThreadInfo
 	
 	pthread_t thread_id;
 	cpu_set_t cpu;
-	uint32_t  num_of_task;
+	uint32_t  task_id;
 
-    int  event_fd;
-	bool ready;
+    bool finished;
+	bool waiting_to_be_sent;
 };
 
 enum Errors
@@ -85,8 +85,7 @@ struct ClusterClientHandle
 	struct sockaddr_in server_addr;
 
 	// Task management:
-	size_t requests_to_send;
-	size_t in_process;
+	size_t initial_requests;
 	
 	struct ThreadInfo* thread_manager;
 	size_t max_threads;
