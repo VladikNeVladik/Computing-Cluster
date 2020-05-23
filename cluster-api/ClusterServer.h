@@ -39,7 +39,6 @@ struct Connection
 
 	// Task managment:
 	size_t requested_tasks;
-	size_t active_computations;
 
 	uint32_t* task_list;
 };
@@ -69,8 +68,9 @@ struct ClusterServerHandle
 
 	// Task management:
 	struct TaskInfo* task_manager;
-	size_t num_unresolved;
-	size_t min_ungiven_task;
+	size_t num_not_resolved;
+	size_t num_completed;
+	size_t min_not_resolved_task;
 
 	// Task computation:
 	char* user_tasks; // Those two are not allocated, but rest in the userland

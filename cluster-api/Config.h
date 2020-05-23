@@ -49,8 +49,7 @@ enum
 	ERR_NOT_READY,
 	CMD_REQUEST_FOR_DATA,
 	CMD_RESULT,
-	CMD_TASK,
-	CMD_DISCONNECT
+	CMD_TASK
 };
 
 struct RequestHeader

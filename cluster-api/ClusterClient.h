@@ -41,20 +41,24 @@ struct ComputeInfo
 {
 	void* data_pack;
 	void* ret_pack;
-	void* (*thread_func)(void*);
 };
 
 struct ThreadInfo
 {
+	// Entry emptiness:
 	bool empty;
 
+	// What to compute:
 	struct ComputeInfo in_args;
+	void* (*computation_func)(void*);
 	
+	// How to compute
 	pthread_t thread_id;
 	cpu_set_t cpu;
 	uint32_t  task_id;
 
-    bool finished;
+	// How to signal the completion:
+    int event_fd;
 	bool waiting_to_be_sent;
 };
 
@@ -99,7 +103,7 @@ struct ClusterClientHandle
 	// Task computation:
 	int max_cpu;
     int cache_line_size;
-	void* (*thread_func)(void*);
+	void* (*computation_func)(void*);
 };
 
 //-------------

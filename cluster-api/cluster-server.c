@@ -432,7 +432,6 @@ static int accept_incoming_connection_request(struct ClusterServerHandle* handle
 	handle->client_conns[conn_i].bytes_recieved      = 0;
 	handle->client_conns[conn_i].now_sending_task_i  = -1;
 	handle->client_conns[conn_i].requested_tasks     = 0;
-	handle->client_conns[conn_i].active_computations = 0;
 
 	// Add the socket to epoll:
 	epoll_data_t event_data =
@@ -511,6 +510,11 @@ static void read_data_on_connection(struct ClusterServerHandle* handle, size_t c
 
 		BUG_ON(1, "[read_data_on_connection] Unable to recv() command from server");
 	}
+	if (bytes_read == 1 && *buffer_pos == 0)
+	{
+		header->cmd = ERR_CONN_BROKEN;
+		return;
+	}
 
 	handle->client_conns[conn_i].bytes_recieved += bytes_read;
 
@@ -531,17 +535,20 @@ static void read_data_on_connection(struct ClusterServerHandle* handle, size_t c
 
 static void put_data_to_connection(struct ClusterServerHandle* handle, size_t conn_i, size_t task_list_i, struct RequestHeader* header)
 {
-	BUG_ON(header->cmd != CMD_TASK && header->cmd != CMD_DISCONNECT, "[put_data_to_connection] Wrong command");
+	BUG_ON(header->cmd != CMD_TASK, "[put_data_to_connection] Wrong command");
 	BUG_ON(256 <= sizeof(*header) + handle->task_size, "[put_data_to_connection] Send buffer too small");
-	BUG_ON(task_list_i == -1, "[put_data_to_connection] Invalid task index in task list");
+	BUG_ON(task_list_i == -1, "[put_data_to_connection] Invalid task index");
 
 	// Fill in the send buffer:
 	char send_buffer[256];
 
+	// Put header in the send buffer:
 	memcpy(send_buffer, header, sizeof(*header));
-
+	
+	// Put payload in the send buffer:
 	uint32_t task_global_i = handle->client_conns[conn_i].task_list[task_list_i];
-	char* data_to_send = &handle->user_tasks[task_global_i];
+	char* data_to_send = handle->user_tasks + task_global_i * handle->task_size;
+
 	memcpy(send_buffer + sizeof(*header), data_to_send, handle->task_size);
 
 	// Preform send:
@@ -580,13 +587,14 @@ static void init_task_management_routine(struct ClusterServerHandle* handle)
 
     for(size_t i = 0; i < handle->num_tasks; i++)
 	{
-		handle->task_manager[i].task   = handle->user_tasks + i * (handle->task_size);
-		handle->task_manager[i].ret    = handle->user_rets  + i * (handle->ret_size);
+		handle->task_manager[i].task   = handle->user_tasks + i * handle->task_size;
+		handle->task_manager[i].ret    = handle->user_rets  + i * handle->ret_size;
 		handle->task_manager[i].status = NOT_RESOLVED;
 	}
 
-	handle->num_unresolved   = handle->num_tasks;
-	handle->min_ungiven_task = 0;
+	handle->num_not_resolved      = handle->num_tasks;
+	handle->num_completed         = 0;
+	handle->min_not_resolved_task = 0;
 
 	// Log:
 	LOG("Task management routine initialised");
@@ -599,6 +607,38 @@ static void free_task_management_routine(struct ClusterServerHandle* handle)
 	// Log:
 	LOG("Task management routine resources freed");
 }
+
+static size_t get_task_to_send(struct ClusterServerHandle* handle, size_t conn_i)
+{
+	// Find a task:
+	size_t task_i = handle->min_not_resolved_task;
+	for (; task_i < handle->num_tasks; task_i++)
+	{
+		if (handle->task_manager[task_i].status == NOT_RESOLVED)
+		{
+			handle->task_manager[task_i].status = RESOLVING;
+			handle->num_not_resolved -= 1;
+
+			handle->min_not_resolved_task = task_i + 1;
+			break;
+		}
+	}
+
+	BUG_ON(task_i == handle->num_tasks, "[get_task_to_send] Greedy client detected");
+
+	// Find place in a task list:
+	for (size_t task_list_i = 0; task_list_i < MAX_TASKS_PER_CLIENT; task_list_i++)
+	{
+		if (handle->client_conns[conn_i].task_list[task_list_i] == -1)
+		{
+			handle->client_conns[conn_i].task_list[task_list_i] = task_i;
+			return task_list_i;
+		}
+	}
+
+	BUG_ON(1, "[get_task_to_send] Asking for a task while there is no room for it");
+}
+
 
 static void push_return_value(struct ClusterServerHandle* handle, size_t conn_i, struct RequestHeader* header)
 {
@@ -620,45 +660,13 @@ static void push_return_value(struct ClusterServerHandle* handle, size_t conn_i,
 	}
 
 	// Update global state:
-	handle->client_conns[conn_i].active_computations -= 1;
-	
 	handle->task_manager[task_index].status = COMPLETED;
-	handle->num_unresolved -= 1;
+	handle->num_completed += 1;
 
 	LOG("Recieved results of task#%ld", task_index);
 }
 
-static size_t get_task_to_send(struct ClusterServerHandle* handle, size_t conn_i)
-{
-	// Find a task:
-	size_t task_i = handle->min_ungiven_task;
-	for (; task_i < handle->num_tasks; task_i++)
-	{
-		if (handle->task_manager[task_i].status == NOT_RESOLVED)
-		{
-			handle->task_manager[task_i].status = RESOLVING;
-			
-			handle->min_ungiven_task = task_i + 1;
-			break;
-		}
-	}
-
-	BUG_ON(task_i == handle->num_tasks, "[get_task_to_send] Trying to overload client");
-
-	// Find place for a task:
-	for (size_t task_list_i = 0; task_list_i < MAX_TASKS_PER_CLIENT; task_list_i++)
-	{
-		if (handle->client_conns[conn_i].task_list[task_list_i] == -1)
-		{
-			handle->client_conns[conn_i].task_list[task_list_i] = task_i;
-			return task_list_i;
-		}
-	}
-
-	BUG_ON(1, "[get_task_to_send] Asking for a task while there is no room for it");
-}
-
-static void drop_unresolved_tasks(struct ClusterServerHandle* handle, size_t conn_i)
+static void drop_resolving_tasks(struct ClusterServerHandle* handle, size_t conn_i)
 {
 	for (int i = 0; i < MAX_TASKS_PER_CLIENT; i++)
 	{
@@ -668,17 +676,16 @@ static void drop_unresolved_tasks(struct ClusterServerHandle* handle, size_t con
 		if (task_i != -1)
 		{
 			handle->task_manager[task_i].status = NOT_RESOLVED;
-			
-			if (task_i < handle->min_ungiven_task)
+			handle->num_not_resolved += 1;
+
+			if (task_i < handle->min_not_resolved_task)
 			{
-				handle->min_ungiven_task = task_i;
+				handle->min_not_resolved_task = task_i;
 			}
 
 			LOG("Returning task#%d to task pool", task_i);
 		}
 	}
-
-	handle->client_conns[conn_i].active_computations = 0;
 }
 
 //------------------
@@ -718,8 +725,8 @@ static void* server_eventloop(void* arg)
 
 					LOG("Connection#%zu hangup detected", conn_i);
 					
-					drop_unresolved_tasks(handle, conn_i);
-					delete_connection    (handle, conn_i);
+					drop_resolving_tasks(handle, conn_i);
+					delete_connection   (handle, conn_i);
 					continue;
 				}
 			}
@@ -744,10 +751,6 @@ static void* server_eventloop(void* arg)
 					{
 						case CMD_REQUEST_FOR_DATA:
 						{
-							BUG_ON(handle->client_conns[conn_i].requested_tasks +
-							       handle->client_conns[conn_i].active_computations == MAX_TASKS_PER_CLIENT,
-								   "Greedy client detected");
-
 							handle->client_conns[conn_i].requested_tasks += 1;
 							break;
 						}
@@ -762,8 +765,8 @@ static void* server_eventloop(void* arg)
 						{
 							LOG("Dropping connection#%zu because of recieve error", conn_i);
 
-							drop_unresolved_tasks(handle, conn_i);
-							delete_connection    (handle, conn_i);
+							drop_resolving_tasks(handle, conn_i);
+							delete_connection   (handle, conn_i);
 							continue;
 						}
 						default: // case ERR_NOT_READY:
@@ -773,8 +776,8 @@ static void* server_eventloop(void* arg)
 						}
 					}
 
-					// Allow write when CMD_DISCONNECT or CMD_TASK can be sent:
-					if (handle->num_unresolved == handle->num_tasks || handle->min_ungiven_task != handle->num_tasks)
+					// Allow write when CMD_TASK can be sent:
+					if (handle->num_not_resolved != 0)
 					{
 						update_connection_management(handle, conn_i, WRITE_ENABLED);
 					}
@@ -792,77 +795,48 @@ static void* server_eventloop(void* arg)
 				{
 					if (pending_events[ev].data.fd != handle->client_conns[conn_i].socket_fd) continue;
 
-					struct RequestHeader header;
-					if (handle->num_unresolved == 0)
+					// Send all requested tasks of one connection: 
+					while (handle->client_conns[conn_i].requested_tasks != 0)
 					{
-						header.cmd     = CMD_DISCONNECT;
-						header.task_id = -1;
+						if (handle->client_conns[conn_i].now_sending_task_i == -1)
+						{
+							handle->client_conns[conn_i].now_sending_task_i = get_task_to_send(handle, conn_i);
+						}
 
-						// Soft-disconnect client:
-						put_data_to_connection(handle, conn_i, 0 /* send trash over the wire */, &header);
+						size_t task_list_i = handle->client_conns[conn_i].now_sending_task_i;
+
+						struct RequestHeader header =
+						{
+							.cmd     = CMD_TASK,
+							.task_id = htobe32(handle->client_conns[conn_i].task_list[task_list_i])
+						};
+
+						put_data_to_connection(handle, conn_i, task_list_i, &header);
 
 						// Handle operation results:
 						switch (header.cmd)
 						{
-							case CMD_DISCONNECT:
+							case CMD_TASK:
 							{
-								LOG("Sent disconnect to client on connection#%zu", conn_i);
+								LOG("Sent task#%u to client on connection#%zu", handle->client_conns[conn_i].task_list[task_list_i], conn_i);
+								
+								handle->client_conns[conn_i].now_sending_task_i = -1;
+								handle->client_conns[conn_i].requested_tasks -= 1;
+								
 								break;
 							}
 							case ERR_CONN_BROKEN:
 							{
-								delete_connection(handle, conn_i);
+								LOG("Dropping connection#%zu because of send error", conn_i);
 
-								break;
+								drop_resolving_tasks(handle, conn_i);
+								delete_connection   (handle, conn_i);
+								goto skip_connection_management_disable;
 							}
 							default: // case ERR_NOT_READY:
 							{
 								BUG_ON(header.cmd != ERR_NOT_READY, "[server_eventloop] Unknown command recieved");
-							}
-						}
-					}
-					else
-					{
-						// Send all requested tasks of one connection: 
-						while (handle->client_conns[conn_i].requested_tasks != 0)
-						{
-							if (handle->client_conns[conn_i].now_sending_task_i == -1)
-							{
-								handle->client_conns[conn_i].now_sending_task_i = get_task_to_send(handle, conn_i);
-							}
-
-							size_t task_list_i = handle->client_conns[conn_i].now_sending_task_i;
-
-							header.cmd     = CMD_TASK;
-							header.task_id = htobe32(handle->client_conns[conn_i].task_list[task_list_i]);
-
-							put_data_to_connection(handle, conn_i, task_list_i, &header);
-
-							// Handle operation results:
-							switch (header.cmd)
-							{
-								case CMD_TASK:
-								{
-									LOG("Sent task#%u to client on connection#%zu", handle->client_conns[conn_i].task_list[task_list_i], conn_i);
-									
-									handle->client_conns[conn_i].now_sending_task_i = -1;
-									handle->client_conns[conn_i].requested_tasks -= 1;
-									
-									break;
-								}
-								case ERR_CONN_BROKEN:
-								{
-									LOG("Dropping connection#%zu because of send error", conn_i);
-
-									drop_unresolved_tasks(handle, conn_i);
-									delete_connection    (handle, conn_i);
-									goto skip_connection_management_disable;
-								}
-								default: // case ERR_NOT_READY:
-								{
-									BUG_ON(header.cmd != ERR_NOT_READY, "[server_eventloop] Unknown command recieved");
-									goto skip_connection_management_disable;
-								}
+								goto skip_connection_management_disable;
 							}
 						}
 
@@ -877,7 +851,7 @@ static void* server_eventloop(void* arg)
 		}
 
 		// Finish if all the clients left:
-		if (handle->num_unresolved == 0 && handle->num_clients == 0) break;
+		if (handle->num_completed == handle->num_tasks) break;
 	}
 
 	return NULL;

@@ -241,6 +241,7 @@ static void perform_discovery_send(struct ClusterClientHandle* handle)
 	}
 
 	LOG("Sent discovery datagram");
+	// LOG("Sent peep-peep");
 }
 
 // Prototype reqired by catch_servers_discovery_datagram()
@@ -438,7 +439,7 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	// Disable socket lingering:
 	struct linger linger_params =
 	{
-		.l_onoff  = 0,
+		.l_onoff  = 1,
 		.l_linger = 0
 	};
 	if (setsockopt(handle->server_conn.socket_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
@@ -515,7 +516,7 @@ static void read_data_on_connection(struct ClusterClientHandle* handle, struct R
 	size_t bytes_to_read    = recv_buffer_size - handle->server_conn.bytes_recieved;
 
 	int bytes_read = recv(handle->server_conn.socket_fd, buffer_pos, bytes_to_read, 0);
-	if (bytes_read == -1)
+	if (bytes_read == -1 || (bytes_read == 1 && *buffer_pos == 0))
 	{
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
 		{
@@ -544,7 +545,8 @@ static void read_data_on_connection(struct ClusterClientHandle* handle, struct R
 	}
 }
 
-static void put_data_to_connection(struct ClusterClientHandle* handle, size_t task_i, struct RequestHeader* header)
+const size_t PUT_NO_DATA_TO_CONNECTION = -1;
+static void put_data_to_connection(struct ClusterClientHandle* handle, size_t computation_i, struct RequestHeader* header)
 {
 	BUG_ON(header->cmd != CMD_REQUEST_FOR_DATA && header->cmd != CMD_RESULT, "[put_data_to_connection] Wrong command");
 	BUG_ON(256 <= sizeof(*header) + handle->task_size, "[put_data_to_connection] Send buffer too small");
@@ -552,11 +554,16 @@ static void put_data_to_connection(struct ClusterClientHandle* handle, size_t ta
 	// Fill in the send buffer:
 	char send_buffer[256];
 
+	// Put header in the send buffer:
 	memcpy(send_buffer, header, sizeof(*header));
-
-	char* data_to_send = handle->task_buffer + task_i * (handle->ret_size + handle->cache_line_size);
-	memcpy(send_buffer + sizeof(*header), data_to_send, handle->ret_size);
-
+	
+	if (computation_i != PUT_NO_DATA_TO_CONNECTION)
+	{
+		// Put no payload in the send buffer:
+		char* data_to_send = handle->thread_manager[computation_i].in_args.ret_pack;
+		memcpy(send_buffer + sizeof(*header), data_to_send, handle->ret_size);
+	}
+	
 	// Send:
 	int bytes_written = send(handle->server_conn.socket_fd, send_buffer, sizeof(*header) + handle->ret_size, MSG_NOSIGNAL);
 	if (bytes_written != sizeof(*header) + handle->ret_size)
@@ -627,8 +634,7 @@ static void init_task_management_routine(struct ClusterClientHandle* handle)
 		struct ComputeInfo in_args =
 		{
 			.data_pack   = handle->task_buffer + i * (handle->task_size + handle->cache_line_size),
-			.ret_pack    = handle->ret_buffer  + i * (handle->ret_size  + handle->cache_line_size),
-			.thread_func = handle->thread_func
+			.ret_pack    = handle->ret_buffer  + i * (handle->ret_size  + handle->cache_line_size)
 		};
 
 		// Set cpu to run on:
@@ -648,10 +654,14 @@ static void init_task_management_routine(struct ClusterClientHandle* handle)
 		handle->thread_manager[i] = (struct ThreadInfo)
 		{
 			.empty              = 1,
+
 			.in_args            = in_args,
+			.computation_func   = handle->computation_func,
+
 			.thread_id          = -1, /*not yet known*/
 			.cpu                = cpu_set,
 			.task_id            = -1, /*not yet known*/
+
 			.event_fd           = event_fd,
 			.waiting_to_be_sent = 0
 		};
@@ -686,7 +696,7 @@ static void free_task_management_routine(struct ClusterClientHandle* handle)
 
 static void start_task_management_routine(struct ClusterClientHandle* handle)
 {
-	for(int i = 0; i < handle->max_threads; i++)
+	for (int i = 0; i < handle->max_threads; i++)
 	{
 		epoll_data_t event_data =
 		{
@@ -716,7 +726,7 @@ static void* computation_wrapper(void* data)
 {
 	struct ThreadInfo* info = (struct ThreadInfo*) data;
 
-	void* (*func)(void*) = info->in_args.thread_func;
+	void* (*func)(void*) = info->computation_func;
 
 	// Start computation:
 	void* ret_val = (*func)(&(info->in_args));
@@ -856,11 +866,6 @@ static void* client_eventloop(void* arg)
 						start_computation(handle, header.task_id, &handle->server_conn.recv_buffer[sizeof(header)]);
 						break;
 					}
-					case CMD_DISCONNECT:
-					{
-						LOG("Server initiated soft disconnect");
-						return NULL;
-					}
 					default: // case ERR_NOT_READY:
 					{
 						BUG_ON(header.cmd != ERR_NOT_READY, "[client_eventloop] Unknown request arrived");
@@ -915,7 +920,7 @@ static void* client_eventloop(void* arg)
 						.task_id = -1
 					};
 
-					put_data_to_connection(handle, 0 /* send trash over the wire */, &header);
+					put_data_to_connection(handle, PUT_NO_DATA_TO_CONNECTION, &header);
 
 					// Handle operation results:
 					if (header.cmd == ERR_NOT_READY) goto skip_connection_management;
@@ -1014,7 +1019,7 @@ void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const
 	handle.max_threads      = num_threads;
 	handle.ret_size         = ret_size;
 	handle.task_size        = task_size;
-	handle.thread_func      = thread_func;
+	handle.computation_func = thread_func;
 
 	init_cluster_client(&handle);
 
