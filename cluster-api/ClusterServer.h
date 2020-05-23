@@ -20,6 +20,8 @@
 //-------------
 
 #include <pthread.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 // Bool:
 typedef char bool;
@@ -27,18 +29,25 @@ typedef char bool;
 struct Connection
 {
 	int  socket_fd;
-	bool want_task;
-
-	// Task managment:
-	bool   returned_task;
-	size_t active_computations;
-
-	int* task_list;
-	size_t num_tasks;
 
 	// Recv buffer:
 	char*  recv_buffer;
 	size_t bytes_recieved;
+
+	// Send operation:
+	uint32_t now_sending_task_i;
+
+	// Task managment:
+	size_t requested_tasks;
+
+	uint32_t* task_list;
+};
+
+struct TaskInfo
+{
+	void* task;
+	void* ret;
+	int   status;
 };
 
 struct ClusterServerHandle
@@ -49,7 +58,7 @@ struct ClusterServerHandle
 
 	// Discovery:
 	int discovery_socket_fd;
-	int discovery_timer_fd;
+	struct sockaddr_in broadcast_addr;
 
 	// Connection management:
 	int accept_socket_fd;
@@ -58,36 +67,30 @@ struct ClusterServerHandle
 	size_t max_clients;
 
 	// Task management:
-	struct task_info* task_manager;
-	size_t num_unresolved;
+	struct TaskInfo* task_manager;
+	size_t num_not_resolved;
+	size_t num_completed;
+	size_t min_not_resolved_task;
+
+	// Task computation:
+	char* user_tasks; // Those two are not allocated, but rest in the userland
+	char* user_rets;
+
 	size_t num_tasks;
-	size_t size_task;
-	size_t size_ret;
+	size_t task_size;
+	size_t ret_size;
 };
 
-enum{
+enum
+{
 	NOT_RESOLVED = 0,
 	RESOLVING,
 	COMPLETED
 };
 
-struct task_info
-{
-	void* task;
-	void* ret;
-	int   status;
-};
-
-//-------------------------------------
-// Initialization and deinitialization
-//-------------------------------------
-
-void init_cluster_server(struct ClusterServerHandle* handle);
-void stop_cluster_server(struct ClusterServerHandle* handle);
-
-//-----------------------------
-// Computation task management
-//-----------------------------
+//-------------
+// Computation 
+//-------------
 
 int compute_task(size_t num_tasks, void* tasks, size_t size_task, void* rets, size_t size_ret);
 

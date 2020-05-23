@@ -27,9 +27,9 @@ int main(int argc, char* argv[])
 	// Set log file:
 	set_log_file("log/CLIENT-LOG.log");
 
-	if (argc != 2)
+	if (argc != 2 && argc != 3)
 	{
-		LOG_ERROR("Usage: computation-client <number of worker threads> ");
+		LOG_ERROR("Usage: computation-client <number of worker threads> [<server hostname>]");
 		exit(EXIT_FAILURE);
 	}
 
@@ -41,7 +41,10 @@ int main(int argc, char* argv[])
 	 	exit(EXIT_FAILURE);
 	}
 
-	client_compute(num_thr, sizeof(struct task_data), sizeof(struct ret_data), NULL, integral_thread);
+	const char* server_hostname = NULL;
+	if (argc == 3) server_hostname = argv[2];
+
+	client_compute(num_thr, sizeof(struct task_data), sizeof(struct ret_data), integral_thread, server_hostname);
 
 	return EXIT_SUCCESS;
 }
@@ -61,21 +64,23 @@ void* integral_thread(void* arg)
     struct task_data* data_pack = info->data_pack;
     BUG_ON(data_pack == NULL, "[integral_thread] Bad argument");
 
+    double start = data_pack->start;
+    double end   = data_pack->end;
+    double delta = data_pack->step;
 
-    double delta   = data_pack->step;
-    double end     = data_pack->end;
-    double start   = data_pack->start;
-	double x       = start + delta;
 
+	double sum = 0.0;
+    for (double x = start + delta; x < end; x += delta)
+    {
+        sum += func(x) * delta;
+    }
+
+	sum += func(start) * delta / 2;
+    sum += func(  end) * delta / 2;
+
+    // Return results:
 	struct ret_data* ret_data = info->ret_pack;
+    ret_data->sum = sum;
 
-	ret_data->sum = 0.0;
-
-    for (; x < end; x += delta)// Check x and delta in asm version
-        ret_data->sum += func(x) * delta;
-
-    ret_data->sum += func(start) * delta / 2;
-    ret_data->sum += func(end) * delta / 2;
-
-	return NULL;
+	return ret_data;
 }

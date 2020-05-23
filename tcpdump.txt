@@ -1,0 +1,11 @@
+13:15:39.117705 IP 196.54.137.136.1493 > VladiksMac.45418: Flags [.], ack 152, win 10558, options [nop,nop,TS val 166162241 ecr 709813864], length 0
+13:15:39.119404 IP VladiksMac.45418 > 196.54.137.136.1493: Flags [.], ack 96, win 501, options [nop,nop,TS val 709814104 ecr 166162243], length 0
+13:16:03.912425 IP VladiksMac.45418 > 196.54.137.136.1493: Flags [.], ack 208, win 501, options [nop,nop,TS val 709838897 ecr 166186844], length 0
+13:16:04.059278 IP VladiksMac.45418 > 196.54.137.136.1493: Flags [.], ack 305, win 501, options [nop,nop,TS val 709839044 ecr 166187115], length 0
+13:16:14.059206 IP 196.54.137.136.1493 > VladiksMac.45418: Flags [.], ack 705, win 10558, options [nop,nop,TS val 166197159 ecr 709848863], length 0
+13:16:16.736820 IP VladiksMac.45418 > 196.54.137.136.1493: Flags [.], ack 415, win 501, options [nop,nop,TS val 709851722 ecr 166199816], length 0
+13:16:16.859826 IP 196.54.137.136.1493 > VladiksMac.45418: Flags [.], ack 947, win 10558, options [nop,nop,TS val 166199939 ecr 709851722], length 0
+13:16:20.155832 IP VladiksMac.45418 > 196.54.137.136.1493: Flags [.], ack 524, win 501, options [nop,nop,TS val 709855141 ecr 166203133], length 0
+13:16:25.697118 IP VladiksMac.45418 > 196.54.137.136.1493: Flags [.], ack 635, win 501, options [nop,nop,TS val 709860682 ecr 166208757], length 0
+13:16:30.060522 IP 196.54.137.136.1493 > VladiksMac.45418: Flags [.], ack 1192, win 10558, options [nop,nop,TS val 166213149 ecr 709864864], length 0
+

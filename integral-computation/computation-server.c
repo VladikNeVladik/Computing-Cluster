@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-const size_t num_tasks   = 24;
+const size_t num_tasks   = 8;
 const double start_point = 1.0;
 const double end_point   = 51.0;
 const double diff        = 0.00000001;
@@ -58,13 +58,12 @@ int main(int argc, char* argv[])
 	double result = 0.0;
 	for (size_t i = 0; i < num_tasks; i++)
 	{
-		// HOT FIX !!!!
-		BUG_ON(ret_buff[i].ret_val != ret_buff[i].ret_val/*!!!! NAN !!!!*/, "[return loop] ret_val of task is NAN");
+		BUG_ON(ret_buff[i].ret_val != ret_buff[i].ret_val, "[return loop] ret_val of task is NAN");
 		result += ret_buff[i].ret_val;
 	}
 	free(ret_buff);
 
-	LOG("Result = %lg", result);
+	LOG("Result = %lf", result);
 
 	return EXIT_SUCCESS;
 }
