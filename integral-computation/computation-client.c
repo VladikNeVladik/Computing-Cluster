@@ -27,9 +27,9 @@ int main(int argc, char* argv[])
 	// Set log file:
 	set_log_file("log/CLIENT-LOG.log");
 
-	if (argc != 2)
+	if (argc != 2 && argc != 3)
 	{
-		LOG_ERROR("Usage: computation-client <number of worker threads> ");
+		LOG_ERROR("Usage: computation-client <number of worker threads> [<server hostname>]");
 		exit(EXIT_FAILURE);
 	}
 
@@ -41,7 +41,10 @@ int main(int argc, char* argv[])
 	 	exit(EXIT_FAILURE);
 	}
 
-	client_compute(num_thr, sizeof(struct task_data), sizeof(struct ret_data), NULL, integral_thread);
+	const char* server_hostname = NULL;
+	if (argc == 3) server_hostname = argv[2];
+
+	client_compute(num_thr, sizeof(struct task_data), sizeof(struct ret_data), integral_thread, server_hostname);
 
 	return EXIT_SUCCESS;
 }

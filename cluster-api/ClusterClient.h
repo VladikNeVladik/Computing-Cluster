@@ -110,6 +110,6 @@ struct ClusterClientHandle
 // Computation
 //-------------
 
-void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*));
+void client_compute(size_t num_threads, size_t task_size, size_t ret_size, void* (*thread_func)(void*), const char* master_host);
 
 #endif // COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED

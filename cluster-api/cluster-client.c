@@ -49,7 +49,7 @@ static void init_discovery_routine(struct ClusterClientHandle* handle)
 {
 	if (!handle->local_discovery)
 	{
-		LOG("Discovery routine initialized (distant discoverymode)");
+		LOG("Discovery routine initialized (distant discovery mode)");
 		return;
 	}
 
@@ -124,6 +124,8 @@ static void init_discovery_routine(struct ClusterClientHandle* handle)
 
 static void free_discovery_routine(struct ClusterClientHandle* handle)
 {
+	if (!handle->local_discovery) return;
+
 	if (close(handle->discovery_socket_fd) == -1)
 	{
 		LOG_ERROR("[free_discovery_routine] Unable to close socket");
@@ -142,7 +144,7 @@ static void free_discovery_routine(struct ClusterClientHandle* handle)
 
 static void start_discovery_routine(struct ClusterClientHandle* handle)
 {
-	BUG_ON(!handle->local_discovery, "[start_discovery_routine] Unneeded phase for distant discovery");
+	if (!handle->local_discovery) return;
 
 	// Add the discovery socket to epoll:
 	epoll_data_t event_data =
@@ -371,6 +373,8 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 			exit(EXIT_FAILURE);
 		}
 		
+		LOG("Waiting for server to listen on connection");
+
 		int sock_fd = -1;
 		for (struct addrinfo* addr = result; addr != NULL; addr = addr->ai_next)
 		{
@@ -381,16 +385,29 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 				continue;
 			}
 
-			if (connect(sock_fd, addr->ai_addr, addr->ai_addrlen) == -1)
+			while (1)
 			{
-				close(sock_fd);
-				sock_fd = -1;
-				continue;
+				int connected = connect(sock_fd, addr->ai_addr, addr->ai_addrlen);
+				if (connected == -1)
+				{
+					if (errno == ECONNREFUSED)
+					{
+						// Sleep in order not to waste CPU-time:
+						struct timespec sleep_request = {1, 0}; // 1 sec
+						nanosleep(&sleep_request, NULL);
+					}
+					else
+					{
+						close(sock_fd);
+						sock_fd = -1;
+						break;
+					}
+				}
+				else goto socket_acquired;
 			}
-
-			break;
 		}
 
+		socket_acquired:
 		if (sock_fd == -1)
 		{
 			LOG_ERROR("[start_connection_management_routine] Unable to aquire socket via getaddrinfo()");
@@ -974,6 +991,12 @@ void init_cluster_client(struct ClusterClientHandle* handle)
 	// Perform discovery:
 	start_discovery_routine(handle);
 
+	// Start connection management:
+	if (!handle->local_discovery)
+	{
+		start_connection_management_routine(handle);
+	}
+
 	// Log:
 	LOG("Cluster-client initialized");
 }
@@ -1002,7 +1025,7 @@ void stop_cluster_client(struct ClusterClientHandle* handle)
 	LOG("Cluster-client stopped");
 }
 
-void client_compute(size_t num_threads, size_t task_size, size_t ret_size, const char* master_host, void* (*thread_func)(void*))
+void client_compute(size_t num_threads, size_t task_size, size_t ret_size, void* (*thread_func)(void*), const char* master_host)
 {
 	BUG_ON(num_threads == 0,    "[client_compute] Number of threads is zero");
 	BUG_ON(task_size == 0,      "[client_compute] Task size is zero");
