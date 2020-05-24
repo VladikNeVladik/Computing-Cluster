@@ -1,11 +1,12 @@
-// No Copyright. Vladislav Aleinik 2020
-//======================================
+// No Copyright. Vladislav Aleinik && Maxim Davydov 2020
+//==========================================================
 // Computing Cluster Client
-//======================================
+//==========================================================
+// - Performs time-to-time "Where are you, server?" sendout
 // - Connects to computation cluster
 // - Performs computations
 // - Sends results back
-//======================================
+//=========================================================
 #ifndef COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED
 #define COMPUTING_CLUSTER_CLIENT_HPP_INCLUDED
 

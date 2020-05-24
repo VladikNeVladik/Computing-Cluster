@@ -1,7 +1,7 @@
-// No Copyright. Vladislav Aleinik 2020
-//=========================================
-// Computing Cluster Client Implementation
-//=========================================
+// No Copyright. Vladislav Aleinik && Maxim Davydov 2020
+//=======================================================
+// Computing Cluster Client
+//=======================================================
 
 // Feature test macros:
 #ifndef _POSIX_C_SOURCE

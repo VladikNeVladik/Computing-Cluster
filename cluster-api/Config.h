@@ -1,9 +1,9 @@
-// No Copyright. Vladislav Aleinik 2020            
-//=================================================
+// No Copyright. Vladislav Aleinik && Maxim Davydov 2020     
+//=======================================================
 // Config File                                     
-//=================================================
+//=======================================================
 // - All system-wide configuration is defined here 
-//=================================================
+//=======================================================
 #ifndef COMPUTING_CLUSTER_CONFIG_HPP_INCLUDED
 #define COMPUTING_CLUSTER_CONFIG_HPP_INCLUDED
 

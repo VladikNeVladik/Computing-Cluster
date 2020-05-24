@@ -1,4 +1,4 @@
-// No Copyright. Vladislav Aleinik 2020
+// No Copyright. Vladislav Aleinik && Maxim Davydov 2020
 
 #include "../cluster-api/ClusterClient.h"
 
