@@ -389,22 +389,30 @@ static int accept_incoming_connection_request(struct ClusterServerHandle* handle
 	};
 	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
 	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set SO_LINGER socket option");
+		LOG_ERROR("[start_connection_management_routine] Unable to disable SO_LINGER socket option");
 		exit(EXIT_FAILURE);
 	}
 
-	setsockopt_arg = 0;
-	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_LINGER2 socket option");
-		exit(EXIT_FAILURE);
-	}
+	// setsockopt_arg = 0;
+	// if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	// {
+	// 	LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
+	// 	exit(EXIT_FAILURE);
+	// }
 
 	// Disable Nagle's algorithm:
 	setsockopt_arg = 0;
 	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_NODELAY, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
 	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_NODELAY socket option");
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_NODELAY socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable corking:
+	setsockopt_arg = 0;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_CORK, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_CORK socket option");
 		exit(EXIT_FAILURE);
 	}
 

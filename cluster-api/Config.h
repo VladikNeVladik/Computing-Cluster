@@ -27,10 +27,10 @@ const size_t SERVERS_DISCOVERY_DATAGRAM_SIZE = sizeof(SERVERS_DISCOVERY_DATAGRAM
 // Connection Management 
 //-----------------------
 
-const int   CONNECTION_PORT            =   9798;
-const char* CONNECTION_PORT_STR        = "9798";
-const int MAX_SIMULTANEOUS_CONNECTIONS =    100;
-const int LISTEN_CONNECTION_BACKLOG    =     10;
+const int   CONNECTION_PORT              =   9798;
+const char* CONNECTION_PORT_STR          = "9798";
+const int   MAX_SIMULTANEOUS_CONNECTIONS =    100;
+const int   LISTEN_CONNECTION_BACKLOG    =     10;
 
 // TCP-keepalive attributes:
 const int TCP_KEEPALIVE_IDLE_TIME  = 1; // sec
