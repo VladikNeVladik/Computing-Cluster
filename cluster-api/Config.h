@@ -38,7 +38,7 @@ const int TCP_KEEPALIVE_INTERVAL   = 1; // sec
 const int TCP_KEEPALIVE_NUM_PROBES = 4;
 
 // TCP user-timeout:
-const int TCP_NO_SEND_ACKS_TIMEOUT = 5000; // ms
+const unsigned int TCP_NO_SEND_ACKS_TIMEOUT = 5000; // ms
 
 //-----------------------
 // Task Management 
