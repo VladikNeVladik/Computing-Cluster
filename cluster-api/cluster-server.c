@@ -352,7 +352,6 @@ static int accept_incoming_connection_request(struct ClusterServerHandle* handle
 		exit(EXIT_FAILURE);
 	}
 
-
 	// Ask socket to automatically detect disconnection:
 	int setsockopt_yes = 1;
 	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)

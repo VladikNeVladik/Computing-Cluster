@@ -39,11 +39,20 @@ int main(int argc, char* argv[])
 	BUG_ON(ret_buff  == NULL, "[computation-server] Alloc tasks_buffer");
 
 	double diap = (end_point - start_point) / num_tasks;
-	for(size_t i = 0; i < num_tasks; i++)
+	for (size_t i = 0; i < num_tasks; i++)
 	{
 		task_buff[i].start = start_point + i * diap;
 		task_buff[i].end   = start_point + (i + 1) * diap;
 		task_buff[i].step  = diff;
+
+		// Fix endianness:
+		uint64_t* ptr_start = (uint64_t*) &task_buff[i].start;
+		uint64_t* ptr_end   = (uint64_t*) &task_buff[i].end;
+		uint64_t* ptr_step  = (uint64_t*) &task_buff[i].step;
+
+		*ptr_start = htobe64(*ptr_start);
+		*ptr_end   = htobe64(*ptr_end);
+		*ptr_step  = htobe64(*ptr_step);
 	}
 
 	int ret = compute_task(num_tasks, task_buff, sizeof(*task_buff), ret_buff, sizeof(*ret_buff));
