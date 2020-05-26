@@ -230,76 +230,6 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 		exit(EXIT_FAILURE);
 	}
 
-	// Ask socket to automatically detect disconnection:
-	setsockopt_yes = 1;
-	if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set SO_KEEPALIVE socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPIDLE,
-	               &TCP_KEEPALIVE_IDLE_TIME, sizeof(TCP_KEEPALIVE_IDLE_TIME)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPIDLE socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPINTVL,
-	               &TCP_KEEPALIVE_INTERVAL, sizeof(TCP_KEEPALIVE_INTERVAL)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPINTVL socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPCNT, &TCP_KEEPALIVE_NUM_PROBES, sizeof(TCP_KEEPALIVE_NUM_PROBES)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPCNT socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// Set timeout to wait for unaknowledged sends:
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &TCP_NO_SEND_ACKS_TIMEOUT, sizeof(TCP_NO_SEND_ACKS_TIMEOUT)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_USER_TIMEOUT socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// Disable socket lingering:
-	struct linger linger_params =
-	{
-		.l_onoff  = 1,
-		.l_linger = 0
-	};
-	if (setsockopt(sock_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable SO_LINGER socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	int setsockopt_arg = 0;
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// Disable Nagle's algorithm:
-	setsockopt_arg = 0;
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_NODELAY, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_NODELAY socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// Disable corking:
-	setsockopt_arg = 0;
-	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_CORK, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_CORK socket option");
-		exit(EXIT_FAILURE);
-	}
-
 	// Listen for incoming connections:
 	if (listen(sock_fd, LISTEN_CONNECTION_BACKLOG) == -1)
 	{
@@ -419,6 +349,77 @@ static int accept_incoming_connection_request(struct ClusterServerHandle* handle
 		if (errno == EAGAIN) return -1;
 
 		LOG_ERROR("[accept_incoming_connection_request] Unable to accept4() incoming connection request");
+		exit(EXIT_FAILURE);
+	}
+
+
+	// Ask socket to automatically detect disconnection:
+	int setsockopt_yes = 1;
+	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set SO_KEEPALIVE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPIDLE,
+	               &TCP_KEEPALIVE_IDLE_TIME, sizeof(TCP_KEEPALIVE_IDLE_TIME)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPIDLE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPINTVL,
+	               &TCP_KEEPALIVE_INTERVAL, sizeof(TCP_KEEPALIVE_INTERVAL)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPINTVL socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &TCP_KEEPALIVE_NUM_PROBES, sizeof(TCP_KEEPALIVE_NUM_PROBES)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPCNT socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Set timeout to wait for unaknowledged sends:
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &TCP_NO_SEND_ACKS_TIMEOUT, sizeof(TCP_NO_SEND_ACKS_TIMEOUT)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_USER_TIMEOUT socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable socket lingering:
+	struct linger linger_params =
+	{
+		.l_onoff  = 1,
+		.l_linger = 0
+	};
+	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable SO_LINGER socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	int setsockopt_arg = 0;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable Nagle's algorithm:
+	setsockopt_arg = 0;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_NODELAY, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_NODELAY socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable corking:
+	setsockopt_arg = 0;
+	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_CORK, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_CORK socket option");
 		exit(EXIT_FAILURE);
 	}
 
@@ -735,12 +736,19 @@ static void* server_eventloop(void* arg)
 			{
 				for (size_t conn_i = 0; conn_i < handle->max_clients; ++conn_i)
 				{
-					if (pending_events[ev].data.fd != handle->client_conns[conn_i].socket_fd)  continue;
+					if (pending_events[ev].data.fd != handle->client_conns[conn_i].socket_fd) continue;
 
 					LOG("Connection#%zu hangup detected", conn_i);
 					
 					drop_resolving_tasks(handle, conn_i);
 					delete_connection   (handle, conn_i);
+
+					if (handle->num_clients == 0)
+					{
+						LOG("No workers left. Qutting");
+						exit(EXIT_SUCCESS);
+					}
+
 					continue;
 				}
 			}
