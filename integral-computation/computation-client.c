@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <limits.h>
 
-
 struct task_data
 {
 	double start;
