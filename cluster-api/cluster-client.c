@@ -549,9 +549,9 @@ static void read_data_on_connection(struct ClusterClientHandle* handle, struct R
 	size_t bytes_to_read    = recv_buffer_size - handle->server_conn.bytes_recieved;
 
 	int bytes_read = recv(handle->server_conn.socket_fd, buffer_pos, bytes_to_read, 0);
-	if (bytes_read == -1 || bytes_read == 0)
+	if (bytes_read == -1)
 	{
-		if (bytes_read == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
 		{
 			header->cmd = ERR_NOT_READY;
 			return;
@@ -559,6 +559,11 @@ static void read_data_on_connection(struct ClusterClientHandle* handle, struct R
 
 		LOG_ERROR("[read_data_on_connection] Unable to recv() command from server");
 		exit(EXIT_FAILURE);
+	}
+	if (bytes_read == 0)
+	{
+		header->cmd = ERR_CONN_BROKEN;
+		return;
 	}
 
 	handle->server_conn.bytes_recieved += bytes_read;
@@ -604,6 +609,11 @@ static void put_data_to_connection(struct ClusterClientHandle* handle, size_t co
 		if (bytes_written == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
 		{
 			header->cmd = ERR_NOT_READY;
+			return;
+		}
+		if (bytes_written == -1 && errno == EPIPE)
+		{
+			header->cmd = ERR_CONN_BROKEN;
 			return;
 		}
 		
@@ -900,6 +910,11 @@ static void* client_eventloop(void* arg)
 						start_computation(handle, header.task_id, &handle->server_conn.recv_buffer[sizeof(header)]);
 						break;
 					}
+					case ERR_CONN_BROKEN:
+					{
+						LOG("Connection loss detected on read");
+						return NULL;
+					}
 					default: // case ERR_NOT_READY:
 					{
 						BUG_ON(header.cmd != ERR_NOT_READY, "[client_eventloop] Unknown request arrived");
@@ -935,7 +950,15 @@ static void* client_eventloop(void* arg)
 						put_data_to_connection(handle, computation_i, &header);
 
 						// Handle operation results:
-						if (header.cmd == ERR_NOT_READY) goto skip_connection_management;
+						if (header.cmd == ERR_CONN_BROKEN)
+						{
+							LOG("Connection loss detected on write");
+							return NULL;
+						}
+						if (header.cmd == ERR_NOT_READY)
+						{
+							goto skip_connection_management;
+						}
 						
 						// Free thread entry:
 						handle->thread_manager[computation_i].waiting_to_be_sent = 0;
@@ -957,7 +980,15 @@ static void* client_eventloop(void* arg)
 					put_data_to_connection(handle, PUT_NO_DATA_TO_CONNECTION, &header);
 
 					// Handle operation results:
-					if (header.cmd == ERR_NOT_READY) goto skip_connection_management;
+					if (header.cmd == ERR_CONN_BROKEN)
+					{
+						LOG("Connection loss detected on write");
+						return NULL;
+					}
+					if (header.cmd == ERR_NOT_READY)
+					{
+						goto skip_connection_management;
+					}
 
 					handle->initial_requests -= 1;
 
