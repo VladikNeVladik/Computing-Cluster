@@ -432,24 +432,32 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		exit(EXIT_FAILURE);
 	}
 
-	int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
-	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPIDLE,
+	              &TCP_KEEPALIVE_IDLE_TIME, sizeof(TCP_KEEPALIVE_IDLE_TIME)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPIDLE socket option");
 		exit(EXIT_FAILURE);
 	}
 
-	setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
-	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPINTVL,
+	               &TCP_KEEPALIVE_INTERVAL, sizeof(TCP_KEEPALIVE_INTERVAL)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPINTVL socket option");
 		exit(EXIT_FAILURE);
 	}
 
-	setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
-	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPCNT,
+	               &TCP_KEEPALIVE_NUM_PROBES, sizeof(TCP_KEEPALIVE_NUM_PROBES)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPCNT socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Set timeout to wait for unaknowledged sends:
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_USER_TIMEOUT,
+	               &TCP_NO_SEND_ACKS_TIMEOUT, sizeof(TCP_NO_SEND_ACKS_TIMEOUT)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_USER_TIMEOUT socket option");
 		exit(EXIT_FAILURE);
 	}
 
@@ -465,12 +473,12 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		exit(EXIT_FAILURE);
 	}
 
-	// setsockopt_arg = 0;
-	// if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	// {
-	// 	LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
-	// 	exit(EXIT_FAILURE);
-	// }
+	int setsockopt_arg = 0;
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
+		exit(EXIT_FAILURE);
+	}
 
 	// Disable Nagle's algorithm:
 	setsockopt_arg = 0;
@@ -541,9 +549,9 @@ static void read_data_on_connection(struct ClusterClientHandle* handle, struct R
 	size_t bytes_to_read    = recv_buffer_size - handle->server_conn.bytes_recieved;
 
 	int bytes_read = recv(handle->server_conn.socket_fd, buffer_pos, bytes_to_read, 0);
-	if (bytes_read == -1 || (bytes_read == 1 && *buffer_pos == 0))
+	if (bytes_read == -1 || bytes_read == 0)
 	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		if (bytes_read == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
 		{
 			header->cmd = ERR_NOT_READY;
 			return;
@@ -600,6 +608,7 @@ static void put_data_to_connection(struct ClusterClientHandle* handle, size_t co
 		}
 		
 		LOG_ERROR("[put_data_to_connection] Unable to send() data");
+		exit(EXIT_FAILURE);
 	}
 }
 

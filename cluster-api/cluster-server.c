@@ -230,6 +230,76 @@ static void init_connection_management_routine(struct ClusterServerHandle* handl
 		exit(EXIT_FAILURE);
 	}
 
+	// Ask socket to automatically detect disconnection:
+	setsockopt_yes = 1;
+	if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set SO_KEEPALIVE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPIDLE,
+	               &TCP_KEEPALIVE_IDLE_TIME, sizeof(TCP_KEEPALIVE_IDLE_TIME)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPIDLE socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPINTVL,
+	               &TCP_KEEPALIVE_INTERVAL, sizeof(TCP_KEEPALIVE_INTERVAL)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPINTVL socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPCNT, &TCP_KEEPALIVE_NUM_PROBES, sizeof(TCP_KEEPALIVE_NUM_PROBES)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPCNT socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Set timeout to wait for unaknowledged sends:
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &TCP_NO_SEND_ACKS_TIMEOUT, sizeof(TCP_NO_SEND_ACKS_TIMEOUT)) == -1)
+	{
+		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_USER_TIMEOUT socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable socket lingering:
+	struct linger linger_params =
+	{
+		.l_onoff  = 1,
+		.l_linger = 0
+	};
+	if (setsockopt(sock_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable SO_LINGER socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	int setsockopt_arg = 0;
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable Nagle's algorithm:
+	setsockopt_arg = 0;
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_NODELAY, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_NODELAY socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable corking:
+	setsockopt_arg = 0;
+	if (setsockopt(sock_fd, IPPROTO_TCP, TCP_CORK, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_CORK socket option");
+		exit(EXIT_FAILURE);
+	}
+
 	// Listen for incoming connections:
 	if (listen(sock_fd, LISTEN_CONNECTION_BACKLOG) == -1)
 	{
@@ -352,70 +422,6 @@ static int accept_incoming_connection_request(struct ClusterServerHandle* handle
 		exit(EXIT_FAILURE);
 	}
 
-	// Ask socket to automatically detect disconnection:
-	int setsockopt_yes = 1;
-	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set SO_KEEPALIVE socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
-	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPIDLE socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
-	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPINTVL socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
-	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[accept_incoming_connection_request] Unable to set TCP_KEEPCNT socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// Disable socket lingering:
-	struct linger linger_params =
-	{
-		.l_onoff  = 1,
-		.l_linger = 0
-	};
-	if (setsockopt(client_socket_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable SO_LINGER socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// setsockopt_arg = 0;
-	// if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	// {
-	// 	LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
-	// 	exit(EXIT_FAILURE);
-	// }
-
-	// Disable Nagle's algorithm:
-	setsockopt_arg = 0;
-	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_NODELAY, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_NODELAY socket option");
-		exit(EXIT_FAILURE);
-	}
-
-	// Disable corking:
-	setsockopt_arg = 0;
-	if (setsockopt(client_socket_fd, IPPROTO_TCP, TCP_CORK, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_CORK socket option");
-		exit(EXIT_FAILURE);
-	}
-
 	// Search for a free cell:
 	size_t conn_i = -1;
 	for (size_t i = 0; i < handle->max_clients; ++i)
@@ -448,7 +454,7 @@ static int accept_incoming_connection_request(struct ClusterServerHandle* handle
 	};
 	struct epoll_event event_config =
 	{
-		.events = EPOLLIN|EPOLLOUT|EPOLLHUP,
+		.events = EPOLLIN|EPOLLOUT|EPOLLHUP|EPOLLRDHUP,
 		.data   = event_data
 	};
 	if (epoll_ctl(handle->epoll_fd, EPOLL_CTL_ADD, handle->client_conns[conn_i].socket_fd, &event_config) == -1)
@@ -518,7 +524,7 @@ static void read_data_on_connection(struct ClusterServerHandle* handle, size_t c
 
 		BUG_ON(1, "[read_data_on_connection] Unable to recv() command from server");
 	}
-	if (bytes_read == 1 && *buffer_pos == 0)
+	if (bytes_read == 0)
 	{
 		header->cmd = ERR_CONN_BROKEN;
 		return;
