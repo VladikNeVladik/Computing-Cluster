@@ -48,7 +48,7 @@ bin/computation-client.out : integral-computation/computation-client.c obj/clust
 	gcc ${CCFLAGS} $< -o $@ obj/cluster-client.o obj/logging.o
 
 compile : bin/computation-server.out bin/computation-client.out
-	@ printf "\033[1;33mComputation compiled!\033[0m\n"
+	@ printf "\033[1;33mCompilation compiled!\033[0m\n"
 
 run_server : bin/computation-server.out
 	@ printf "\033[1;33mServer Running!\033[0m\n"
