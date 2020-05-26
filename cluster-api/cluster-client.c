@@ -346,35 +346,6 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 			exit(EXIT_FAILURE);
 		}
 		
-		// Ask socket to automatically detect disconnection:
-		int setsockopt_yes = 1;
-		if (setsockopt(sock_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
-		{
-			LOG_ERROR("[start_connection_management_routine] Unable to set SO_KEEPALIVE socket option");
-			exit(EXIT_FAILURE);
-		}
-
-		int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
-		if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-		{
-			LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPIDLE socket option");
-			exit(EXIT_FAILURE);
-		}
-
-		setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
-		if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-		{
-			LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPINTVL socket option");
-			exit(EXIT_FAILURE);
-		}
-
-		setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
-		if (setsockopt(sock_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-		{
-			LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPCNT socket option");
-			exit(EXIT_FAILURE);
-		}
-
 		if (connect(sock_fd, (struct sockaddr*) &handle->server_addr, sizeof(handle->server_addr)) == -1)
 		{
 			LOG_ERROR("[start_connection_management_routine] Unable to connect to server");
@@ -453,34 +424,34 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		exit(EXIT_FAILURE);
 	}
 
-	// // Ask socket to automatically detect disconnection:
-	// int setsockopt_yes = 1;
-	// if (setsockopt(handle->server_conn.socket_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
-	// {
-	// 	LOG_ERROR("[start_connection_management_routine] Unable to set SO_KEEPALIVE socket option");
-	// 	exit(EXIT_FAILURE);
-	// }
+	// Ask socket to automatically detect disconnection:
+	int setsockopt_yes = 1;
+	if (setsockopt(handle->server_conn.socket_fd, SOL_SOCKET, SO_KEEPALIVE, &setsockopt_yes, sizeof(setsockopt_yes)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set SO_KEEPALIVE socket option");
+		exit(EXIT_FAILURE);
+	}
 
-	// int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
-	// if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	// {
-	// 	LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPIDLE socket option");
-	// 	exit(EXIT_FAILURE);
-	// }
+	int setsockopt_arg = TCP_KEEPALIVE_IDLE_TIME;
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPIDLE socket option");
+		exit(EXIT_FAILURE);
+	}
 
-	// setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
-	// if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	// {
-	// 	LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPINTVL socket option");
-	// 	exit(EXIT_FAILURE);
-	// }
+	setsockopt_arg = TCP_KEEPALIVE_INTERVAL;
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPINTVL socket option");
+		exit(EXIT_FAILURE);
+	}
 
-	// setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
-	// if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	// {
-	// 	LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPCNT socket option");
-	// 	exit(EXIT_FAILURE);
-	// }
+	setsockopt_arg = TCP_KEEPALIVE_NUM_PROBES;
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_KEEPCNT socket option");
+		exit(EXIT_FAILURE);
+	}
 
 	// Disable socket lingering:
 	struct linger linger_params =
@@ -490,22 +461,30 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 	};
 	if (setsockopt(handle->server_conn.socket_fd, SOL_SOCKET, SO_LINGER, &linger_params, sizeof(linger_params)) == -1)
 	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set SO_LINGER socket option");
+		LOG_ERROR("[start_connection_management_routine] Unable to disable SO_LINGER socket option");
 		exit(EXIT_FAILURE);
 	}
 
-	int setsockopt_arg = 0;
-	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
-	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_LINGER2 socket option");
-		exit(EXIT_FAILURE);
-	}
+	// setsockopt_arg = 0;
+	// if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	// {
+	// 	LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_LINGER2 socket option");
+	// 	exit(EXIT_FAILURE);
+	// }
 
 	// Disable Nagle's algorithm:
 	setsockopt_arg = 0;
 	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_NODELAY, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
 	{
-		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_NODELAY socket option");
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_NODELAY socket option");
+		exit(EXIT_FAILURE);
+	}
+
+	// Disable corking:
+	setsockopt_arg = 0;
+	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_CORK, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
+	{
+		LOG_ERROR("[start_connection_management_routine] Unable to disable TCP_CORK socket option");
 		exit(EXIT_FAILURE);
 	}
 
