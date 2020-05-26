@@ -7,7 +7,7 @@
 
 const size_t num_tasks   = 8;
 const double start_point = 1.0;
-const double end_point   = 51.0;
+const double end_point   = 101.0;
 const double diff        = 0.00000001;
 
 struct task_data
