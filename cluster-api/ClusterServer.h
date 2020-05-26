@@ -1,11 +1,12 @@
-// No Copyright. Vladislav Aleinik 2020
-//==============================================
+// No Copyright. Vladislav Aleinik && Maxim Davydov 2020
+//=======================================================
 // Computing Cluster Server
-//==============================================
-// - Performs time-to-time client node discovery
+//=======================================================
+// - Answers to clients sendout with "Here I Am, client!"
 // - Gives out computational tasks
 // - Aggregates computation results
-//==============================================
+// - Detects disconnected clients
+//=======================================================
 #ifndef COMPUTING_CLUSTER_SERVER_HPP_INCLUDED
 #define COMPUTING_CLUSTER_SERVER_HPP_INCLUDED
 
