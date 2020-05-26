@@ -735,12 +735,19 @@ static void* server_eventloop(void* arg)
 			{
 				for (size_t conn_i = 0; conn_i < handle->max_clients; ++conn_i)
 				{
-					if (pending_events[ev].data.fd != handle->client_conns[conn_i].socket_fd)  continue;
+					if (pending_events[ev].data.fd != handle->client_conns[conn_i].socket_fd) continue;
 
 					LOG("Connection#%zu hangup detected", conn_i);
 					
 					drop_resolving_tasks(handle, conn_i);
 					delete_connection   (handle, conn_i);
+
+					if (handle->num_clients == 0)
+					{
+						LOG("No workers left. Qutting");
+						exit(EXIT_SUCCESS);
+					}
+
 					continue;
 				}
 			}
