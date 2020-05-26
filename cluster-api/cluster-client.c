@@ -494,7 +494,7 @@ static void start_connection_management_routine(struct ClusterClientHandle* hand
 		exit(EXIT_FAILURE);
 	}
 
-	setsockopt_arg = 0;
+	int setsockopt_arg = 0;
 	if (setsockopt(handle->server_conn.socket_fd, IPPROTO_TCP, TCP_LINGER2, &setsockopt_arg, sizeof(setsockopt_arg)) == -1)
 	{
 		LOG_ERROR("[start_connection_management_routine] Unable to set TCP_LINGER2 socket option");
