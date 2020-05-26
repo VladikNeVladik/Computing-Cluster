@@ -68,6 +68,14 @@ void* integral_thread(void* arg)
     double end   = data_pack->end;
     double delta = data_pack->step;
 
+	// Fix endianness:
+    uint64_t* ptr_start = (uint64_t*) &start;
+	uint64_t* ptr_end   = (uint64_t*) &end;
+    uint64_t* ptr_delta = (uint64_t*) &delta;
+
+	*ptr_start = htobe64(*ptr_start);
+	*ptr_end   = htobe64(*ptr_end  );
+	*ptr_delta = htobe64(*ptr_delta);
 
 	double sum = 0.0;
     for (double x = start + delta; x < end; x += delta)
