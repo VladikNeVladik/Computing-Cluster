@@ -974,7 +974,7 @@ static void* client_eventloop(void* arg)
 					struct RequestHeader header =
 					{
 						.cmd     = CMD_REQUEST_FOR_DATA,
-						.task_id = -1
+						.task_id = htobe32(-1)
 					};
 
 					put_data_to_connection(handle, PUT_NO_DATA_TO_CONNECTION, &header);

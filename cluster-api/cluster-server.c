@@ -816,7 +816,7 @@ static void* server_eventloop(void* arg)
 				{
 					if (pending_events[ev].data.fd != handle->client_conns[conn_i].socket_fd) continue;
 
-					// Send all requested tasks of one connection: 
+					// Send all requested tasks of one connection:
 					while (handle->client_conns[conn_i].requested_tasks != 0)
 					{
 						if (handle->client_conns[conn_i].now_sending_task_i == -1)

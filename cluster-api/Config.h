@@ -44,7 +44,7 @@ const unsigned int TCP_NO_SEND_ACKS_TIMEOUT = 5000; // ms
 // Task Management 
 //-----------------------
 
-const size_t MAX_TASKS_PER_CLIENT = 16; 
+const size_t MAX_TASKS_PER_CLIENT = 16;
 
 enum
 {
